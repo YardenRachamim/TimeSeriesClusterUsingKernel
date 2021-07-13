@@ -4,6 +4,8 @@ import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.mixture import GaussianMixture
 
+from utils import DataUtils
+
 
 class TCK(TransformerMixin):
     """
@@ -21,10 +23,10 @@ class TCK(TransformerMixin):
 
         if not mixture_model_params:
             self.mixture_model_params = {'covariance_type': 'diag',
-                        'max_iter': 100,
-                        'n_init': 1,
-                        'init_params': 'kmeans',
-                        'verbose': 2}
+                                         'max_iter': 100,
+                                         'n_init': 1,
+                                         'init_params': 'kmeans',
+                                         'verbose': 2}
 
         self.K = None  # Kernel matrix (the actual TCK)
         self.N = 0  # Amount of MTS (initialize during the fit method)
@@ -47,7 +49,7 @@ class TCK(TransformerMixin):
 
     """
         Algorithm 2 from the article
-        :param X: a 3d matrix represent MTS
+        :param X: a 3d matrix represent MTS (num_of_mts, max_time_window, attributes)
         :param R: a 3d matrix reoresent the missing values of the MTS
     """
 
@@ -64,9 +66,15 @@ class TCK(TransformerMixin):
             gmm_model = GaussianMixture(n_components=gmm_mixture_params,
                                         **self.mixture_model_params)
 
-            current_data = X[mts_indices, attributes_indices, time_segments_indices]
+            current_subset_data = DataUtils.get_3d_array_subset(X, mts_indices,
+                                                                time_segments_indices,
+                                                                attributes_indices)
+            current_subset_mask = DataUtils.get_3d_array_subset(R, mts_indices,
+                                                                time_segments_indices,
+                                                                attributes_indices)
 
-            gmm_model.fit(current_data)
+            current_data_for_train = current_subset_data[current_subset_mask]
+            gmm_model.fit(current_data_for_train)
             posterior_probabilities = gmm_model.predict_proba(X)
             # Theta params
             means = gmm_model.means_
@@ -93,18 +101,22 @@ class TCK(TransformerMixin):
         # TODO: more robust way, at most time setmen
         self.T_max = 10
 
-        self.V_max = X.shape[1]  # Number of attributes
+        self.V_max = X.shape[2]  # Number of attributes
         self.V_min = 1
-
-        self.N_max = -1
 
         # This just for safety, doesn't suppose to happen
         if not self.N:
             self.N = X.shape[0]
-        self.N_min = 0.1 * self.N  # At least 10% of the data
+        self.N_min = int(0.1 * self.N)  # At least 10% of the data
         self.N_max = self.N  # At most all the data
 
     # endregion initialization
+
+    def get_subset_data(self, X: np.ndarray,
+                        mts_indices: np.ndarray,
+                        time_segments_indices: np.ndarray,
+                        attributes_indices: np.ndarray) -> np.ndarray:
+        return X[mts_indices][:, time_segments_indices][:, :, attributes_indices]
 
     def get_iter_time_segment_indices(self):
         # TODO: check if this is what I want
@@ -115,13 +127,13 @@ class TCK(TransformerMixin):
 
     def get_iter_attributes_indices(self):
         V = np.random.randint(self.V_min, self.V_max)
-        attributes_subset_indices = np.random.choice(np.arange(self.V_max), V)
+        attributes_subset_indices = np.random.choice(np.arange(self.V_max), V, replace=False)
 
         return attributes_subset_indices
 
     def get_iter_mts_indices(self):
-        V = np.random.randint(self.N_min, self.N_max)
-        mts_subset_indices = np.random.choice(np.arange(self.V_max), V)
+        N = np.random.randint(self.N_min, self.N_max)
+        mts_subset_indices = np.random.choice(np.arange(self.N_max), N, replace=False)
 
         return mts_subset_indices
 
