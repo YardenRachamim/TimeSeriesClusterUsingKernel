@@ -1,0 +1,5 @@
+# Project exclude paths
+/articles/
+/mtsdata/
+/Uwave_data/
+/UWaveGestureLibrary/
