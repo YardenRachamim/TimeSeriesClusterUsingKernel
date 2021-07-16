@@ -53,7 +53,7 @@ class TCK(TransformerMixin):
         :param R: a 3d matrix reoresent the missing values of the MTS
     """
 
-    def fit(self, X: np.ndarray, R=None):
+    def fit(self, X: np.ndarray, R: np.ndarray =None):
         self.initialize_kernel_matrix(X)
         self.set_randomization_fields(X)
 
@@ -73,7 +73,7 @@ class TCK(TransformerMixin):
                                                                 time_segments_indices,
                                                                 attributes_indices)
 
-            current_data_for_train = current_subset_data[current_subset_mask]
+            current_data_for_train = current_subset_data[current_subset_mask == 1]
             gmm_model.fit(current_data_for_train)
             posterior_probabilities = gmm_model.predict_proba(X)
             # Theta params
