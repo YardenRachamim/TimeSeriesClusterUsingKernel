@@ -159,6 +159,9 @@ class TCK(TransformerMixin):
         return self.K
 
 
+from scipy.stats import norm
+
+
 class MAP_EM_GMM(TransformerMixin):
     """
     :param a0: Hyperparameter for the kernel based mean prior
@@ -177,9 +180,13 @@ class MAP_EM_GMM(TransformerMixin):
         self.N0 = N0
         self.C = C
         self.num_iter = num_iter
-        self.N = None  # Number of MTS isntances
+        self.N = None  # Number of MTS instances
         self.V = None  # Number of attributes
         self.T = None  # Number of time segments
+        self.posteriors = None  # shape CxN
+        self.theta = None  # Shape Cx1
+        self.mu = None  # Shape CxV
+        self.s2 = None  # Shape CxV
 
     """
         Algorithm 1 from the article
@@ -187,19 +194,22 @@ class MAP_EM_GMM(TransformerMixin):
         :param R: a 3d matrix represent the missing values of the MTS
     """
     def fit(self, X: np.ndarray,
-            R: np.ndarray):
+            R: np.ndarray = None):
         # TODO: change to more indicative names, for now follow the matlab code notations
         self.N = X.shape[0]
         self.T = X.shape[1]
         self.V = X.shape[2]
-        theta = self.init_cluster_priors()  # Shape Cx1
-        mu = self.init_cluster_means()
-        s2 = np.zeros(self.C, sV)  # cluster variances
-        # TODO: check if it's relevant
-        Q = np.zeros(self.C, sN)  # Cluster assignments
+        # TODO: initialize correctly
+        self.posteriors = np.zeros((self.C, self.N))
+        self.theta = self.init_cluster_priors()
+        self.mu = self.init_cluster_means()
+        self.s2 = self.init_cluster_variance()
+
+        if not R:
+            R = np.ones_like(X)
 
         for i in range(self.num_iter):
-            self.expectation_step()
+            self.expectation_step(X, R)
             self.maximization_step()
 
         return self
@@ -208,6 +218,33 @@ class MAP_EM_GMM(TransformerMixin):
         return np.ones(self.C) / self.C
 
     def init_cluster_means(self):
-        return  np.zeros((self.C, sV))  # Cluster means
+        # TODO: implement the right way e.g. according to the algorithm
+        return np.zeros((self.C, self.V))  # Cluster means
+
+    def init_cluster_variance(self):
+        # TODO: implement the right way, e.g. according to the algorithm
+        return np.ones((self.C, self.V))  # cluster variances
+
+    def expectation_step(self, X: np.ndarray, R: np.ndarray):
+        # TODO: switch to Vectorized way
+        # pi_g = P(z_g=1|X, R, theta) = sigma(1, G)theta_g * pi(1, V)pi(1, T)N(x_v(t)|mu_gv, sigma_gv)^r_v(t)
+
+        for g in range(self.C):
+            p = np.ones(self.N, dtype='float64')
+
+            for v in range(self.V):
+                loc = self.mu[g, v]
+                scale = np.sqrt(self.s2[g, v])
+                for t in range(self.T):
+                    missing_indication = R[g, v, t]
+                    p *= norm.pdf(X[:, t, v], loc=loc, scale=scale) ** missing_indication
+
+            self.posteriors[g, :] = p
+
+        self.posteriors = np.sum(self.posteriors, axis=1)
+        pass
+
+    def maximization_step(self):
+        pass
 
 
