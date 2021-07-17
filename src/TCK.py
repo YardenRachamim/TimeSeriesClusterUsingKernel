@@ -50,7 +50,7 @@ class TCK(TransformerMixin):
     """
         Algorithm 2 from the article
         :param X: a 3d matrix represent MTS (num_of_mts, max_time_window, attributes)
-        :param R: a 3d matrix reoresent the missing values of the MTS
+        :param R: a 3d matrix represent the missing values of the MTS
     """
 
     def fit(self, X: np.ndarray, R: np.ndarray =None):
@@ -112,12 +112,6 @@ class TCK(TransformerMixin):
 
     # endregion initialization
 
-    def get_subset_data(self, X: np.ndarray,
-                        mts_indices: np.ndarray,
-                        time_segments_indices: np.ndarray,
-                        attributes_indices: np.ndarray) -> np.ndarray:
-        return X[mts_indices][:, time_segments_indices][:, :, attributes_indices]
-
     def get_iter_time_segment_indices(self):
         # TODO: check if this is what I want
         T = np.random.randint(self.T_min, self.T_max)
@@ -143,7 +137,6 @@ class TCK(TransformerMixin):
     """
     :param q: current iteration
     """
-
     def update_q_params(self, q: int,
                         hyperparameters,
                         time_segments_indices,
@@ -164,3 +157,57 @@ class TCK(TransformerMixin):
 
     def transform(self, X):
         return self.K
+
+
+class MAP_EM_GMM(TransformerMixin):
+    """
+    :param a0: Hyperparameter for the kernel based mean prior
+    :param b0 : Hyperparameter for the kernel based mean prior
+    :param N0: Hyperparameter for the inverse gamma distribution on the std prior
+    :param C: Number of GMMs
+    :param num_iter: number of maximum iteration (default: 20)
+    """
+    def __init__(self, a0: float,
+                 b0: float,
+                 N0: int,
+                 C: int,
+                 num_iter: int = 20):
+        self.a0 = a0
+        self.b0 = b0
+        self.N0 = N0
+        self.C = C
+        self.num_iter = num_iter
+        self.N = None  # Number of MTS isntances
+        self.V = None  # Number of attributes
+        self.T = None  # Number of time segments
+
+    """
+        Algorithm 1 from the article
+        :param X: a 3d matrix represent MTS (NxTxV)
+        :param R: a 3d matrix represent the missing values of the MTS
+    """
+    def fit(self, X: np.ndarray,
+            R: np.ndarray):
+        # TODO: change to more indicative names, for now follow the matlab code notations
+        self.N = X.shape[0]
+        self.T = X.shape[1]
+        self.V = X.shape[2]
+        theta = self.init_cluster_priors()  # Shape Cx1
+        mu = self.init_cluster_means()
+        s2 = np.zeros(self.C, sV)  # cluster variances
+        # TODO: check if it's relevant
+        Q = np.zeros(self.C, sN)  # Cluster assignments
+
+        for i in range(self.num_iter):
+            self.expectation_step()
+            self.maximization_step()
+
+        return self
+
+    def init_cluster_priors(self):
+        return np.ones(self.C) / self.C
+
+    def init_cluster_means(self):
+        return  np.zeros((self.C, sV))  # Cluster means
+
+
