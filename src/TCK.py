@@ -53,7 +53,7 @@ class TCK(TransformerMixin):
         :param R: a 3d matrix represent the missing values of the MTS
     """
 
-    def fit(self, X: np.ndarray, R: np.ndarray =None):
+    def fit(self, X: np.ndarray, R: np.ndarray = None):
         self.initialize_kernel_matrix(X)
         self.set_randomization_fields(X)
 
@@ -137,6 +137,7 @@ class TCK(TransformerMixin):
     """
     :param q: current iteration
     """
+
     def update_q_params(self, q: int,
                         hyperparameters,
                         time_segments_indices,
@@ -167,9 +168,10 @@ class MAP_EM_GMM(TransformerMixin):
     :param a0: Hyperparameter for the kernel based mean prior
     :param b0 : Hyperparameter for the kernel based mean prior
     :param N0: Hyperparameter for the inverse gamma distribution on the std prior
-    :param C: Number of GMMs
+    :param C: Number of gaussians
     :param num_iter: number of maximum iteration (default: 20)
     """
+
     def __init__(self, a0: float,
                  b0: float,
                  N0: int,
@@ -183,16 +185,21 @@ class MAP_EM_GMM(TransformerMixin):
         self.N = None  # Number of MTS instances
         self.V = None  # Number of attributes
         self.T = None  # Number of time segments
-        self.posteriors = None  # shape CxNxT
+        self.posteriors = None  # shape CxN
         self.theta = None  # Shape Cx1
         self.mu = None  # Shape CxTxV
         self.s2 = None  # Shape CxV
+
+        # # TODO: check if its ok to add this. for smothness
+        # self.EPSILON = 1e-6
+        self.EPSILON = 0
 
     """
         Algorithm 1 from the article
         :param X: a 3d matrix represent MTS (NxTxV)
         :param R: a 3d matrix represent the missing values of the MTS
     """
+
     def fit(self, X: np.ndarray,
             R: np.ndarray = None):
         # TODO: change to more indicative names, for now follow the matlab code notations
@@ -200,7 +207,7 @@ class MAP_EM_GMM(TransformerMixin):
         self.T = X.shape[1]
         self.V = X.shape[2]
         # TODO: initialize correctly
-        self.posteriors = np.zeros((self.C, self.N, self.T))
+        self.posteriors = np.zeros((self.C, self.N))
         self.theta = self.init_cluster_priors()
         self.mu = self.init_cluster_means()
         self.s2 = self.init_cluster_variance()
@@ -210,7 +217,7 @@ class MAP_EM_GMM(TransformerMixin):
 
         for i in range(self.num_iter):
             self.expectation_step(X, R)
-            self.maximization_step()
+            self.maximization_step(R)
 
         return self
 
@@ -219,7 +226,7 @@ class MAP_EM_GMM(TransformerMixin):
 
     def init_cluster_means(self):
         # TODO: implement the right way e.g. according to the algorithm
-        return np.zeros((self.C, self.T, self.V))  # Cluster means
+        return np.random.normal(loc=0, scale=1, size=(self.C, self.T, self.V))
 
     def init_cluster_variance(self):
         # TODO: implement the right way, e.g. according to the algorithm
@@ -229,16 +236,48 @@ class MAP_EM_GMM(TransformerMixin):
         new_posterior = np.zeros_like(self.posteriors)
 
         for c in range(self.C):
+            mu = self.mu[c]
+            s2 = self.s2[c]
+            theta = self.theta[c]
+
             for n in range(self.N):
                 current_MTS = X[n]
-                current_missing_indication = R[n]
-                mu = self.mu[c]
-                s2 = self.s2[c]
-                theta = self.theta[c]
+                MTS_missing_indication = R[n]
 
-                new_posterior[c, n] = self.evalute_posterior()
+                new_posterior[c, n] = self.evaluate_posterior(current_MTS,
+                                                              MTS_missing_indication,
+                                                              mu,
+                                                              s2,
+                                                              theta)
+            new_posterior[c] *= theta
 
-    def maximization_step(self):
-        pass
+        for c in range(self.C):
+            new_posterior[c] /= new_posterior.sum(axis=0)
+
+        self.posteriors = new_posterior
+
+    def evaluate_posterior(self, current_MTS: np.ndarray,
+                           MTS_missing_indication: np.ndarray,
+                           mu: np.ndarray,
+                           s2: np.ndarray,
+                           theta: float) -> float:
+        PX = 1
+
+        for v in range(self.V):
+            for t in range(self.T):
+                norm_val = 1
+                is_missing = MTS_missing_indication[t, v] == 0
+                if not is_missing:
+                    norm_val = norm.pdf(current_MTS[t, v], loc=mu[t, v], scale=s2[v])
+
+                # if norm_val == 0:
+                #     norm_val = self.EPSILON
+
+                PX *= norm_val
+
+        return PX
+
+    def maximization_step(self, R):
+        self.theta = self.posteriors.sum(axis=1) / self.N
 
 
