@@ -185,7 +185,7 @@ class MAP_EM_GMM(TransformerMixin):
         self.T = None  # Number of time segments
         self.posteriors = None  # shape CxN
         self.theta = None  # Shape Cx1
-        self.mu = None  # Shape CxV
+        self.mu = None  # Shape CxTxV
         self.s2 = None  # Shape CxV
 
     """
@@ -219,30 +219,24 @@ class MAP_EM_GMM(TransformerMixin):
 
     def init_cluster_means(self):
         # TODO: implement the right way e.g. according to the algorithm
-        return np.zeros((self.C, self.V))  # Cluster means
+        return np.zeros((self.C, self.T, self.V))  # Cluster means
 
     def init_cluster_variance(self):
         # TODO: implement the right way, e.g. according to the algorithm
         return np.ones((self.C, self.V))  # cluster variances
 
     def expectation_step(self, X: np.ndarray, R: np.ndarray):
-        # TODO: switch to Vectorized way
-        # pi_g = P(z_g=1|X, R, theta) = sigma(1, G)theta_g * pi(1, V)pi(1, T)N(x_v(t)|mu_gv, sigma_gv)^r_v(t)
+        new_posterior = np.zeros_like(self.posteriors)
 
-        for g in range(self.C):
-            p = np.ones(self.N, dtype='float64')
+        for c in range(self.C):
+            for n in range(self.N):
+                current_MTS = X[n]
+                current_missing_indication = R[n]
+                mu = self.mu[c]
+                s2 = self.s2[c]
+                theta = self.theta[c]
 
-            for v in range(self.V):
-                loc = self.mu[g, v]
-                scale = np.sqrt(self.s2[g, v])
-                for t in range(self.T):
-                    missing_indication = R[g, v, t]
-                    p *= norm.pdf(X[:, t, v], loc=loc, scale=scale) ** missing_indication
-
-            self.posteriors[g, :] = p
-
-        self.posteriors = np.sum(self.posteriors, axis=1)
-        pass
+                new_posterior[c, n] = self.evalute_posterior()
 
     def maximization_step(self):
         pass
