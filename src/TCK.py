@@ -183,7 +183,7 @@ class MAP_EM_GMM(TransformerMixin):
         self.N = None  # Number of MTS instances
         self.V = None  # Number of attributes
         self.T = None  # Number of time segments
-        self.posteriors = None  # shape CxN
+        self.posteriors = None  # shape CxNxT
         self.theta = None  # Shape Cx1
         self.mu = None  # Shape CxTxV
         self.s2 = None  # Shape CxV
@@ -200,7 +200,7 @@ class MAP_EM_GMM(TransformerMixin):
         self.T = X.shape[1]
         self.V = X.shape[2]
         # TODO: initialize correctly
-        self.posteriors = np.zeros((self.C, self.N))
+        self.posteriors = np.zeros((self.C, self.N, self.T))
         self.theta = self.init_cluster_priors()
         self.mu = self.init_cluster_means()
         self.s2 = self.init_cluster_variance()
