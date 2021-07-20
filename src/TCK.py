@@ -207,8 +207,8 @@ class MAP_EM_GMM(TransformerMixin):
         self.T = X.shape[1]
         self.V = X.shape[2]
         # TODO: initialize correctly
-        self.posteriors = np.zeros((self.C, self.N))
-        self.theta = self.init_cluster_priors()
+        self.posteriors = self.init_cluster_posteriors()
+        self.theta = self.init_cluster_theta()  # Small theta
         self.mu = self.init_cluster_means()
         self.s2 = self.init_cluster_variance()
 
@@ -221,16 +221,18 @@ class MAP_EM_GMM(TransformerMixin):
 
         return self
 
-    def init_cluster_priors(self):
+    def init_cluster_posteriors(self) -> np.ndarray:
+        # TODO: by Tamir
+        return np.zeros((self.C, self.N))
+
+    def init_cluster_theta(self) -> np.ndarray:
         return np.ones(self.C) / self.C
 
-    def init_cluster_means(self):
-        # TODO: implement the right way e.g. according to the algorithm
-        return np.random.normal(loc=0, scale=1, size=(self.C, self.T, self.V))
+    def init_cluster_means(self) -> np.ndarray:
+        return np.zeros(self.C, self.T, self.V)
 
-    def init_cluster_variance(self):
-        # TODO: implement the right way, e.g. according to the algorithm
-        return np.ones((self.C, self.V))  # cluster variances
+    def init_cluster_variance(self) -> np.ndarray:
+        return np.zeros((self.C, self.V))  # cluster variances
 
     def expectation_step(self, X: np.ndarray, R: np.ndarray):
         new_posterior = np.zeros_like(self.posteriors)
@@ -277,7 +279,8 @@ class MAP_EM_GMM(TransformerMixin):
 
         return PX
 
-    def maximization_step(self, R):
+    def maximization_step(self, X: np.ndarray, R: np.ndarray):
+        # TODO: by Tamir
         self.theta = self.posteriors.sum(axis=1) / self.N
 
 
