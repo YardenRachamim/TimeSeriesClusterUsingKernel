@@ -210,7 +210,7 @@ class MAP_EM_GMM(TransformerMixin):
         self.posteriors = self.init_cluster_posteriors()  # Big pi in the algorithm
         self.theta = self.init_cluster_theta()  # Small theta
         self.mu = self.init_cluster_means()  # mu of big theta
-        self.s2 = self.init_cluster_variance()  # # s2 of big theta
+        self.s2 = self.init_cluster_variance()  # s2 of big theta
 
         if not R:
             R = np.ones_like(X)
@@ -233,7 +233,7 @@ class MAP_EM_GMM(TransformerMixin):
         return np.ones(self.C) / self.C
 
     def init_cluster_means(self) -> np.ndarray:
-        return np.zeros(self.C, self.T, self.V)
+        return np.zeros((self.C, self.T, self.V))
 
     def init_cluster_variance(self) -> np.ndarray:
         return np.zeros((self.C, self.V))  # cluster variances
