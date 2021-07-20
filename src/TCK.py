@@ -217,7 +217,7 @@ class MAP_EM_GMM(TransformerMixin):
 
         for i in range(self.num_iter):
             self.expectation_step(X, R)
-            self.maximization_step(R)
+            self.maximization_step(X, R)
 
         return self
 
