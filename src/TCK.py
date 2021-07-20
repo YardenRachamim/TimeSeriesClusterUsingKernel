@@ -207,21 +207,17 @@ class MAP_EM_GMM(TransformerMixin):
         self.T = X.shape[1]
         self.V = X.shape[2]
         # TODO: initialize correctly
-        self.posteriors = self.init_cluster_posteriors()  # Big pi in the algorithm
+        self.posteriors = self.init_cluster_posteriors()
         self.theta = self.init_cluster_theta()  # Small theta
-        self.mu = self.init_cluster_means()  # mu of big theta
-        self.s2 = self.init_cluster_variance()  # s2 of big theta
+        self.mu = self.init_cluster_means()
+        self.s2 = self.init_cluster_variance()
 
         if not R:
             R = np.ones_like(X)
 
         for i in range(self.num_iter):
-            # Here we assumed we have a random posterior initialization,
-            # hence we will start with the maximization step
-            is_first_iter = i == 0
-            if not is_first_iter:
-                self.expectation_step(X, R)
-            self.maximization_step(X, R)
+            self.expectation_step(X, R)
+            self.maximization_step(R)
 
         return self
 
@@ -233,7 +229,7 @@ class MAP_EM_GMM(TransformerMixin):
         return np.ones(self.C) / self.C
 
     def init_cluster_means(self) -> np.ndarray:
-        return np.zeros((self.C, self.T, self.V))
+        return np.zeros(self.C, self.T, self.V)
 
     def init_cluster_variance(self) -> np.ndarray:
         return np.zeros((self.C, self.V))  # cluster variances
