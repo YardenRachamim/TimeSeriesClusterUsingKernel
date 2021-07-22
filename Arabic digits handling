@@ -1,0 +1,118 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[66]:
+
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+ 
+import scipy.io  
+
+
+# In[119]:
+
+
+def get_arabic_digits_Mat(): # return X array and T array (identical shapes, T has 1 for any instance that exists in X 
+                             #                                                     and 2 for any missing instance ) 
+    arabic=scipy.io.loadmat('ArabicDigits.mat')
+    l=len(arabic['mts'][0][0] [1][0])
+    
+    max_len=0
+
+
+    for  i in range (l):
+        m=arabic['mts'][0][0] [1][0][i] 
+        n=np.transpose(m)
+        current_len=len(n)
+        if current_len>max_len: max_len=current_len
+    
+    ts_dim=n.shape[1]
+    Matl_data=np.zeros((l,max_len,ts_dim))
+    Matl_data_ind=np.ones_like(data,dtype=int)  # data ind : 0-missing, 1-exist, 2-filler , series was shorter ...  
+
+    for i in range (l):
+        Matl_data[i,0:current_len ]=n  # rows not filled are initialized as zeros..
+        Matl_data_ind[i,current_len+1: ]=2 
+
+
+    Xmatl=Matl_data
+    Rmatl=Matl_data_ind
+    
+    return (Xmatl,Rmatl)
+
+
+# In[120]:
+
+
+def get_arabic_digits_fromtxt():  # returns X array and T array (identical shape)
+    # arabic digits data
+
+    arabic_train_df = pd.read_csv("Train_Arabic_Digit.txt",header=None,sep=" " ,skip_blank_lines=True)
+
+    pd.set_option("display.max_rows", 20, "display.max_columns", 20)
+
+
+    ar_np=arabic_train_df.to_numpy()
+
+    ts_dim =ar_np.shape[1]
+
+    # maybe better way to seperate blocks (by nan line  , but this works for now)
+
+    mts_list=[]
+    current=[]
+    max_len=0
+
+    null_entry_count=0
+    for row in ar_np:
+        if  np.isnan(row[0]):
+            current_len=len(current)
+            if current_len > max_len : 
+                max_len=current_len
+
+            if current_len > 0       :
+                mts_list.append(current)
+            else:
+                null_entry_count +=1
+                #print ('null after ',len(mts_list))
+            current=[]
+        else:
+            current.append(row)
+    if len(current)>0 :
+        mts_list.append(current) # in case the file does not end with a blank line , last block
+        current=[]
+  
+    data=np.zeros((len(mts_list),max_len,ts_dim))
+
+    data_ind=np.ones_like(data,dtype=int)  # data ind : 0-missing, 1-exist, 2-filler , series was shorter ...
+
+    for e,entry in enumerate(mts_list):
+        #print (entry)
+        for m,element in enumerate(entry):
+            for d,datum in enumerate (element):
+                data[e,m,d]=datum
+            last_case=m
+            if last_case < max_len:
+                for n in range (m+1,max_len):
+                    data_ind[e,n,:] =2 
+
+     
+
+
+    X=data
+    R=data_ind
+
+
+    return (X,R)
+
+
+# In[122]:
+
+
+X,R= get_arabic_digits_fromtxt()
+XM,RM= get_arabic_digits_Mat()
+
+print (X.shape,R.shape,XM.shape,RM.shape)
+ 
+
