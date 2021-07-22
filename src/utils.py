@@ -10,3 +10,10 @@ class DataUtils:
         subset = arr[first_dim_indices][:, second_dim_indices][:, :, third_dim_indices]
 
         return subset
+
+    @staticmethod
+    def initialize_empty_kernel_matrix(X: np.ndarray):
+        N = X.shape[0]
+        kernel_matrix_shape = (N, N)
+
+        return np.zeros(kernel_matrix_shape)

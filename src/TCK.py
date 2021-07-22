@@ -18,6 +18,9 @@ class TCK(TransformerMixin):
         # Model parameters
         self.Q = Q
         self.C = C
+
+        np.random.seed (7)   # only once for TCK life to ensure that randoms or permutations do not repeat.
+
         self.q_params = {}  # Dictionary to track at each iteration q the results
 
         self.K = None  # Kernel matrix (the actual TCK)
@@ -46,7 +49,8 @@ class TCK(TransformerMixin):
     """
 
     def fit(self, X: np.ndarray, R: np.ndarray = None):
-        self.initialize_kernel_matrix(X)
+        self.N = X.shape[0]
+        self.K = DataUtils.initialize_empty_kernel_matrix(X)
         self.set_randomization_fields(X)
 
         if R is None:
@@ -54,7 +58,7 @@ class TCK(TransformerMixin):
 
         for q in range(self.Q):
             # TODO: can be pararalized for performance
-            hyperparameters = {'a0': 0.1, 'b0': 0.1, 'N0': 1}  # TODO: initialize according to GMM.
+            hyperparameters = self.get_iter_hyper()
             time_segments_indices = self.get_iter_time_segment_indices()
             attributes_indices = self.get_iter_attributes_indices()
             mts_indices = self.get_iter_mts_indices()
@@ -78,32 +82,23 @@ class TCK(TransformerMixin):
             self.update_q_params(q, hyperparameters, time_segments_indices, attributes_indices,
                                  mts_indices, C, gmm_model)
 
-            # TODO: this is the right way to update?
-            self.k += np.sum(posterior_probabilities * posterior_probabilities, axis=1)
-            self.K += np.matmul(posterior_probabilities.T, posterior_probabilities)
+            self.K += posterior_probabilities.T @ posterior_probabilities
 
         return self
 
     # region initialization
-
-    def initialize_kernel_matrix(self, X: np.ndarray):
-        self.N = X.shape[0]
-        kernel_matrix_shape = (self.N, self.N)
-        self.K = np.zeros(kernel_matrix_shape)
-
     def set_randomization_fields(self, X: np.ndarray):
-        # TODO: consult with Tamir about the initialization
-        self.T_min = 2  # We want at least 2
-        # TODO: more robust way, at most time setmen
-        self.T_max = 10
+        # The parameters are initialized according to section 4.2 in the article
+        self.T_min = 6
+        self.T_max = X.shape[1]  # Number of time segments
 
         self.V_max = X.shape[2]  # Number of attributes
-        self.V_min = 1
+        self.V_min = 2
 
         # This just for safety, doesn't suppose to happen
         if not self.N:
             self.N = X.shape[0]
-        self.N_min = int(0.1 * self.N)  # At least 10% of the data
+        self.N_min = int(0.8 * self.N)  # At least 80% of the data
         self.N_max = self.N  # At most all the data
 
     # endregion initialization
@@ -130,6 +125,16 @@ class TCK(TransformerMixin):
     def get_iter_num_of_mixtures(self):
         return np.random.randint(2, self.C)
 
+    def get_iter_hyper(self):
+        # The parameters are initialized according to section 4.2 in the article
+        a0 = np.random.uniform(0.001, 1)
+        b0 = np.random.uniform(0.005, 0.2)
+        N0 = np.random.uniform(0.001, 0.2)
+
+        return {'a0': a0, 'b0': b0, 'N0': N0}
+
+
+
     """
     :param q: current iteration
     """
@@ -153,9 +158,21 @@ class TCK(TransformerMixin):
     """
     Algorithm 3 from the article
     """
+    def transform(self, X: np.ndarray,
+                  R: np.ndarray = None) -> np.ndarray:
+        if R is None:
+            R = np.ones_like(X)
 
-    def transform(self, X):
-        return self.K
+        K = DataUtils.initialize_empty_kernel_matrix(X)
+
+        for q in range(self.Q):
+            q_params = self.q_params[q]
+            gmm_model = q_params['gmm_model']
+            posterior_probabilities = gmm_model.transform(X, R)
+
+            K += posterior_probabilities.T @ posterior_probabilities
+
+        return K
 
 
 class SubsetGmmMapEm(TransformerMixin):
@@ -188,7 +205,13 @@ class SubsetGmmMapEm(TransformerMixin):
 
         self.gmm_map_em_model.fit(current_subset_data, current_subset_mask)
 
-    def transform(self, X, R):
+    def transform(self, X, R) -> np.ndarray:
+        if X.ndim < 3:
+            X = X[None, :, :]
+        if R is None:
+            R = np.ones_like(X)
+        if R.ndim < 3:
+            R = R[None, :, :]
         is_valid_shape = (X.shape[1] == self.X_shape[1]) and (X.shape[2] == self.X_shape[2])
         if not is_valid_shape:
             error_msg = "X shape is not valid"
@@ -204,4 +227,4 @@ class SubsetGmmMapEm(TransformerMixin):
                                                             self.time_segments_indices,
                                                             self.attributes_indices)
 
-        self.gmm_map_em_model.transform(current_subset_data, current_subset_mask)
+        return self.gmm_map_em_model.transform(current_subset_data, current_subset_mask)

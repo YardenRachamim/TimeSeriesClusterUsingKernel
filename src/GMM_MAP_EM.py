@@ -16,7 +16,7 @@ class GMM_MAP_EM(TransformerMixin):
 
     def __init__(self, a0: float,
                  b0: float,
-                 N0: int,
+                 N0: float,
                  C: int,
                  num_iter: int = 20):
         self.a0 = a0
@@ -37,9 +37,8 @@ class GMM_MAP_EM(TransformerMixin):
         self.S_0 = None  # Shape TxTxV
         self.invS_0 = None
 
-        # # TODO: check if its ok to add this. for smothness
-        # self.EPSILON = 1e-6
-        self.EPSILON = 0
+        # Upper threshold for distribution according to section 4.2 in the article
+        self.EPSILON = norm.pdf(3)
         self.v_multivariate_normal_pdf = np.vectorize(multivariate_normal.pdf)
 
     """
@@ -115,6 +114,7 @@ class GMM_MAP_EM(TransformerMixin):
             mean = np.tile(self.mu[c], (N, 1, 1))
             cov = np.tile(np.sqrt(self.s2[c]), (N, T, 1))
             prob = self.v_multivariate_normal_pdf(X, mean=mean, cov=cov) ** R
+            prob[prob > self.EPSILON] = self.EPSILON
 
             posterior[c] = prob.prod(axis=1).prod(axis=1)
 
@@ -127,14 +127,14 @@ class GMM_MAP_EM(TransformerMixin):
         # Update sigma
         for c in range(self.C):
             for v in range(self.V):
-                var2 = np.matmul(R[:, :, v].sum(axis=1).T, self.posteriors[c])
+                var2 = R[:, :, v].sum(axis=1).T @ self.posteriors[c]
                 temp = (X[:, :, v] - np.tile(self.mu[c, :, v].T, (self.N, 1))) ** 2
-                var1 = np.matmul(self.posteriors[c].T, (R[:, :, v] * temp).sum(axis=1))
+                var1 = self.posteriors[c].T @ (R[:, :, v] * temp).sum(axis=1)
                 self.s2[c, v] = (self.N0 * self.empirical_variance[v] + var1) / (self.N0 + var2)
 
-                A = self.invS_0[:, :, v] + np.diag(np.matmul(R[:, :, v].T, self.posteriors[c]) / self.s2[c, v])
-                b = np.matmul(self.invS_0[:, :, v], self.empirical_mean[:, v]) + \
-                    np.matmul((R[:, :, v] * X[:, :, v]).T, self.posteriors[c]) / self.s2[c, v]
+                A = self.invS_0[:, :, v] + np.diag(R[:, :, v].T @ self.posteriors[c] / self.s2[c, v])
+                b = (self.invS_0[:, :, v] @ self.empirical_mean[:, v]) + \
+                    ((R[:, :, v] * X[:, :, v]).T @ self.posteriors[c]) / self.s2[c, v]
                 self.mu[c, :, v] = np.linalg.lstsq(A, b)[0]
 
     def transform(self, X: np.ndarray, R: np.ndarray = None) -> np.ndarray:
