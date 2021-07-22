@@ -37,7 +37,7 @@ class GMM_MAP_EM(TransformerMixin):
         self.S_0 = None  # Shape TxTxV
         self.invS_0 = None
 
-        # Upper threshold for distribution according to section 4.2 in the article
+        # Lower threshold for distribution according to section 4.2 in the article
         self.EPSILON = norm.pdf(3)
         self.v_multivariate_normal_pdf = np.vectorize(multivariate_normal.pdf)
 
@@ -114,7 +114,7 @@ class GMM_MAP_EM(TransformerMixin):
             mean = np.tile(self.mu[c], (N, 1, 1))
             cov = np.tile(np.sqrt(self.s2[c]), (N, T, 1))
             prob = self.v_multivariate_normal_pdf(X, mean=mean, cov=cov) ** R
-            prob[prob > self.EPSILON] = self.EPSILON
+            prob[prob < self.EPSILON] = self.EPSILON
 
             posterior[c] = prob.prod(axis=1).prod(axis=1)
 
