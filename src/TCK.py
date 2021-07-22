@@ -59,23 +59,21 @@ class TCK(TransformerMixin):
             attributes_indices = self.get_iter_attributes_indices()
             mts_indices = self.get_iter_mts_indices()
             C = self.get_iter_num_of_mixtures()
-            gmm_model = GMM_MAP_EM(a0=hyperparameters['a0'],
-                                   b0=hyperparameters['b0'],
-                                   N0=hyperparameters['N0'],
-                                   C=C)
+            gmm_map_em_model = GMM_MAP_EM(a0=hyperparameters['a0'],
+                                          b0=hyperparameters['b0'],
+                                          N0=hyperparameters['N0'],
+                                          C=C)
+            gmm_model = SubsetGmmMapEm(gmm_map_em_model,
+                                       mts_indices,
+                                       time_segments_indices,
+                                       attributes_indices)
 
-            current_subset_data = DataUtils.get_3d_array_subset(X, mts_indices,
-                                                                time_segments_indices,
-                                                                attributes_indices)
-            current_subset_mask = DataUtils.get_3d_array_subset(R, mts_indices,
-                                                                time_segments_indices,
-                                                                attributes_indices)
-
-            gmm_model.fit(current_subset_data, current_subset_mask)
+            gmm_model.fit(X, R)
             posterior_probabilities = gmm_model.transform(X, R)
-            # Theta params
-            means = gmm_model.mu
-            covariances = gmm_model.s2
+
+            # # Theta params
+            # means = gmm_model.mu
+            # covariances = gmm_model.s2
 
             self.update_q_params(q, hyperparameters, time_segments_indices, attributes_indices,
                                  mts_indices, C, gmm_model)
@@ -143,12 +141,14 @@ class TCK(TransformerMixin):
                         mts_indices,
                         gmm_mixture_params,
                         gmm_model):
-        self.q_params[q]['hyperparameters'] = hyperparameters
-        self.q_params[q]['time_segments_indices'] = time_segments_indices
-        self.q_params[q]['attributes_indices'] = attributes_indices
-        self.q_params[q]['mts_indices'] = mts_indices
-        self.q_params[q]['gmm_mixture_params'] = gmm_mixture_params
-        self.q_params[q]['gmm_model'] = gmm_model
+        self.q_params[q] = {
+            'hyperparameters': hyperparameters,
+            'time_segments_indices': time_segments_indices,
+            'attributes_indices': attributes_indices,
+            'mts_indices': mts_indices,
+            'gmm_mixture_params': gmm_mixture_params,
+            'gmm_model': gmm_model
+        }
 
     """
     Algorithm 3 from the article
@@ -156,3 +156,52 @@ class TCK(TransformerMixin):
 
     def transform(self, X):
         return self.K
+
+
+class SubsetGmmMapEm(TransformerMixin):
+    def __init__(self, gmm_map_em_model: GMM_MAP_EM,
+                 mts_indices: np.ndarray,
+                 time_segments_indices: np.ndarray,
+                 attributes_indices: np.ndarray):
+        self.gmm_map_em_model = gmm_map_em_model
+        self.mts_indices = mts_indices
+        self.time_segments_indices = time_segments_indices
+        self.attributes_indices = attributes_indices
+
+        self.X_shape = None
+
+    def fit(self, X, R):
+        self.X_shape = X.shape
+        if X.shape != R.shape:
+            error_msg = f"X and R are not of same shape"
+
+            raise Exception(error_msg)
+
+        current_subset_data = DataUtils.get_3d_array_subset(X,
+                                                            self.mts_indices,
+                                                            self.time_segments_indices,
+                                                            self.attributes_indices)
+        current_subset_mask = DataUtils.get_3d_array_subset(R,
+                                                            self.mts_indices,
+                                                            self.time_segments_indices,
+                                                            self.attributes_indices)
+
+        self.gmm_map_em_model.fit(current_subset_data, current_subset_mask)
+
+    def transform(self, X, R):
+        is_valid_shape = (X.shape[1] == self.X_shape[1]) and (X.shape[2] == self.X_shape[2])
+        if not is_valid_shape:
+            error_msg = "X shape is not valid"
+
+            raise Exception(error_msg)
+
+        current_subset_data = DataUtils.get_3d_array_subset(X,
+                                                            np.arange(X.shape[0]),
+                                                            self.time_segments_indices,
+                                                            self.attributes_indices)
+        current_subset_mask = DataUtils.get_3d_array_subset(R,
+                                                            np.arange(R.shape[0]),
+                                                            self.time_segments_indices,
+                                                            self.attributes_indices)
+
+        self.gmm_map_em_model.transform(current_subset_data, current_subset_mask)

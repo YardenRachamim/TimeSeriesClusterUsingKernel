@@ -70,8 +70,7 @@ class GMM_MAP_EM(TransformerMixin):
             # hence we will start with the maximization step
             is_first_iter = i == 0
             if not is_first_iter:
-                pass
-            self.expectation_step(X, R)
+                self.expectation_step(X, R)
             self.maximization_step(X, R)
 
         return self
@@ -90,13 +89,11 @@ class GMM_MAP_EM(TransformerMixin):
         return S_0, invS_0
 
     def init_cluster_posteriors(self) -> np.ndarray:
-           
-        raw=np.random.rand(self.C,self.N)
-        sums  = raw.sum(axis=0)   # sum for each MTS
-        posteriors = raw / sums [ np.newaxis, :] # each MTS total probability is 1
+        raw = np.random.rand(self.C, self.N)
+        sums = raw.sum(axis=0)   # sum for each MTS
+        posteriors = raw / sums[np.newaxis, :]  # each MTS total probability is 1
         
-        return  poseriors #np.zeros((self.C, self.N))
-
+        return posteriors
 
     def init_cluster_theta(self) -> np.ndarray:
         return np.ones(self.C) / self.C
