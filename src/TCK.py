@@ -174,7 +174,20 @@ class TCK(TransformerMixin):
         return K
 
     def get_distance_matrix_frm_kernel_matrix(self, K: np.ndarray):
-        pass
+        K2=np.matmul (K,np.transpose(K))
+    
+        diag=np.diag(K2) 
+        #print (K,K2,diag)
+
+        Pdiag=np.zeros_like(K)
+        Pdiag=Pdiag+diag      # broadcasting
+    
+    
+        D2= Pdiag - 2*K2 + np.transpose(Pdiag)
+        #print (D2)
+    
+        return D2
+         
 
 
 class SubsetGmmMapEm(TransformerMixin):
