@@ -19,6 +19,9 @@ class TCK(TransformerMixin):
         # Model parameters
         self.Q = Q
         self.C = C
+        
+        np.random.seed (7)   # only once for TCK life to ensure that randoms or permutations do not repeat.
+        
         self.q_params = {}  # Dictionary to track at each iteration q the results
 
         if not mixture_model_params:
@@ -44,7 +47,9 @@ class TCK(TransformerMixin):
         # number of data points params
         self.N_max = -1
         self.N_min = -1
-
+        
+        
+        
         # endregion randomization params
 
     """
@@ -59,6 +64,7 @@ class TCK(TransformerMixin):
 
         for q in range(self.Q):
             hyperparameters = None  # TODO: initialize according to GMM.
+            a0, b0, N0 = self.get_iter_hyper()
             time_segments_indices = self.get_iter_time_segment_indices()
             attributes_indices = self.get_iter_attributes_indices()
             mts_indices = self.get_iter_mts_indices()
@@ -74,7 +80,7 @@ class TCK(TransformerMixin):
                                                                 attributes_indices)
 
             current_data_for_train = current_subset_data[current_subset_mask == 1]
-            gmm_model.fit(current_data_for_train)
+            gmm_model.fit(current_data_for_train)  # add parameters...X and R in one array?
             posterior_probabilities = gmm_model.predict_proba(X)
             # Theta params
             means = gmm_model.means_
@@ -132,7 +138,16 @@ class TCK(TransformerMixin):
         return mts_subset_indices
 
     def get_iter_num_of_mixtures(self):
-        return np.random.randint(2, self.C)
+        return np.random.randint(2, self.C)   # here I think we need to loop over all possible c , not random choice, Q2 is random
+                                              # not sure, if high= not provided, first parameter is taken as high...  
+    def get_iter_hyper(self):
+        three=np.random.rand(1,3)
+        a0=three[0]
+        b0=three[1]
+        N0=three[2]  # There is no requirement that N0 is integer..
+        
+        return (a0,b0,N0)
+        
 
     """
     :param q: current iteration
