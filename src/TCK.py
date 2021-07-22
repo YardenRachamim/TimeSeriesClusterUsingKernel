@@ -2,8 +2,7 @@ from typing import Dict
 
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.mixture import GaussianMixture
-
+from GMM_MAP_EM import GMM_MAP_EM
 from utils import DataUtils
 
 
@@ -15,18 +14,11 @@ class TCK(TransformerMixin):
     :param C: maximal number of mixture components
     """
 
-    def __init__(self, Q: int, C: int, mixture_model_params: Dict = None):
+    def __init__(self, Q: int, C: int):
         # Model parameters
         self.Q = Q
         self.C = C
         self.q_params = {}  # Dictionary to track at each iteration q the results
-
-        if not mixture_model_params:
-            self.mixture_model_params = {'covariance_type': 'diag',
-                                         'max_iter': 100,
-                                         'n_init': 1,
-                                         'init_params': 'kmeans',
-                                         'verbose': 2}
 
         self.K = None  # Kernel matrix (the actual TCK)
         self.N = 0  # Amount of MTS (initialize during the fit method)
@@ -57,14 +49,20 @@ class TCK(TransformerMixin):
         self.initialize_kernel_matrix(X)
         self.set_randomization_fields(X)
 
+        if R is None:
+            R = np.ones_like(X)
+
         for q in range(self.Q):
-            hyperparameters = None  # TODO: initialize according to GMM.
+            # TODO: can be pararalized for performance
+            hyperparameters = {'a0': 0.1, 'b0': 0.1, 'N0': 1}  # TODO: initialize according to GMM.
             time_segments_indices = self.get_iter_time_segment_indices()
             attributes_indices = self.get_iter_attributes_indices()
             mts_indices = self.get_iter_mts_indices()
-            gmm_mixture_params = self.get_iter_num_of_mixtures()
-            gmm_model = GaussianMixture(n_components=gmm_mixture_params,
-                                        **self.mixture_model_params)
+            C = self.get_iter_num_of_mixtures()
+            gmm_model = GMM_MAP_EM(a0=hyperparameters['a0'],
+                                   b0=hyperparameters['b0'],
+                                   N0=hyperparameters['N0'],
+                                   C=C)
 
             current_subset_data = DataUtils.get_3d_array_subset(X, mts_indices,
                                                                 time_segments_indices,
@@ -73,18 +71,18 @@ class TCK(TransformerMixin):
                                                                 time_segments_indices,
                                                                 attributes_indices)
 
-            current_data_for_train = current_subset_data[current_subset_mask == 1]
-            gmm_model.fit(current_data_for_train)
-            posterior_probabilities = gmm_model.predict_proba(X)
+            gmm_model.fit(current_subset_data, current_subset_mask)
+            posterior_probabilities = gmm_model.transform(X, R)
             # Theta params
-            means = gmm_model.means_
-            covariances = gmm_model.covariances_
+            means = gmm_model.mu
+            covariances = gmm_model.s2
 
             self.update_q_params(q, hyperparameters, time_segments_indices, attributes_indices,
-                                 mts_indices, gmm_mixture_params, gmm_model)
+                                 mts_indices, C, gmm_model)
 
             # TODO: this is the right way to update?
-            self.K += posterior_probabilities.dot(posterior_probabilities.T)
+            self.k += np.sum(posterior_probabilities * posterior_probabilities, axis=1)
+            self.K += np.matmul(posterior_probabilities.T, posterior_probabilities)
 
         return self
 

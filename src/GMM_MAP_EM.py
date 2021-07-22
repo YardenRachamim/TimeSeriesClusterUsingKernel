@@ -62,7 +62,7 @@ class GMM_MAP_EM(TransformerMixin):
         self.empirical_variance = np.nanstd(X.reshape(self.N*self.T, self.V), axis=0) ** 2
         self.S_0, self.invS_0 = self.init_s0()
 
-        if not R:
+        if R is None:
             R = np.ones_like(X)
 
         for i in range(self.num_iter):
@@ -106,11 +106,12 @@ class GMM_MAP_EM(TransformerMixin):
         self.posteriors = self.evaluate_posterior(X, R)
 
     def evaluate_posterior(self, X: np.ndarray, R: np.ndarray) -> np.ndarray:
-        posterior = np.zeros((self.C, X.shape[0]))
+        N, T, V = X.shape[0], X.shape[1], X.shape[2]
+        posterior = np.zeros((self.C, N))
 
         for c in range(self.C):
-            mean = np.broadcast_to(self.mu[c], X.shape)
-            cov = np.broadcast_to(np.sqrt(self.s2[c]), X.shape)
+            mean = np.tile(self.mu[c], (N, 1, 1))
+            cov = np.tile(np.sqrt(self.s2[c]), (N, T, 1))
             prob = self.v_multivariate_normal_pdf(X, mean=mean, cov=cov) ** R
 
             posterior[c] = prob.prod(axis=1).prod(axis=1)
@@ -138,7 +139,7 @@ class GMM_MAP_EM(TransformerMixin):
         is_dim_added = False
         if X.ndim < 3:
             X = X[None, :, :]
-        if not R:
+        if R is None:
             R = np.ones_like(X)
         if R.ndim < 3:
             R = R[None, :, :]
