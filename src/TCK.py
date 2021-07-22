@@ -138,7 +138,6 @@ class TCK(TransformerMixin):
     """
     :param q: current iteration
     """
-
     def update_q_params(self, q: int,
                         hyperparameters,
                         time_segments_indices,
@@ -174,8 +173,14 @@ class TCK(TransformerMixin):
 
         return K
 
+    def get_distance_matrix_frm_kernel_matrix(self, K: np.ndarray):
+        pass
+
 
 class SubsetGmmMapEm(TransformerMixin):
+    """
+    helper class for the TCK algorithm to represent GMM_MAP_EMM for subsets of data
+    """
     def __init__(self, gmm_map_em_model: GMM_MAP_EM,
                  mts_indices: np.ndarray,
                  time_segments_indices: np.ndarray,
