@@ -39,7 +39,7 @@ class GMM_MAP_EM(TransformerMixin):
 
         # Lower threshold for distribution according to section 4.2 in the article
         self.EPSILON = norm.pdf(3)
-        self.v_multivariate_normal_pdf = np.vectorize(multivariate_normal.pdf)
+        self.v_multivariate_normal_pdf = np.vectorize(norm.pdf)
 
     """
         Algorithm 1 from the article
@@ -113,7 +113,7 @@ class GMM_MAP_EM(TransformerMixin):
         for c in range(self.C):
             mean = np.tile(self.mu[c], (N, 1, 1))
             cov = np.tile(np.sqrt(self.s2[c]), (N, T, 1))
-            prob = self.v_multivariate_normal_pdf(X, mean=mean, cov=cov) ** R
+            prob = self.v_multivariate_normal_pdf(X, loc=mean, scale=cov) ** R
             prob[prob < self.EPSILON] = self.EPSILON
 
             posterior[c] = prob.prod(axis=1).prod(axis=1)
@@ -135,7 +135,7 @@ class GMM_MAP_EM(TransformerMixin):
                 A = self.invS_0[:, :, v] + np.diag(R[:, :, v].T @ self.posteriors[c] / self.s2[c, v])
                 b = (self.invS_0[:, :, v] @ self.empirical_mean[:, v]) + \
                     ((R[:, :, v] * X[:, :, v]).T @ self.posteriors[c]) / self.s2[c, v]
-                self.mu[c, :, v] = np.linalg.lstsq(A, b)[0]
+                self.mu[c, :, v] = np.linalg.lstsq(A, b, rcond=-1)[0]
 
     def transform(self, X: np.ndarray, R: np.ndarray = None) -> np.ndarray:
         is_dim_added = False
