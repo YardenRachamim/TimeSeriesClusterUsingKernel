@@ -132,11 +132,12 @@ class TCK(TransformerMixin):
 
     def get_iter_time_segment_indices(self):
         # TODO: check if this is what I want
-        T = np.random.randint(self.T_min, self.T_max + 1)
-        time_window = np.arange(T)
-
+              
+        t1 = np.random.randint(1,self.T-self.T_min+1);
+        t2 = np.random.randint(t1+self.T_min-1,min(self.T,(t1+self.T_max-1)));
+        time_window= np.arange(t1,t2)
         return time_window
-
+        
     def get_iter_attributes_indices(self):
         V = np.random.randint(self.V_min, self.V_max + 1)
         attributes_subset_indices = np.random.choice(np.arange(self.V_max), V, replace=False)
@@ -144,11 +145,20 @@ class TCK(TransformerMixin):
         return attributes_subset_indices
 
     def get_iter_mts_indices(self):
-        N = np.random.randint(self.N_min, self.N_max + 1)
-        mts_subset_indices = np.random.choice(np.arange(self.N_max), N, replace=False)
-
-        return mts_subset_indices
-
+         
+        #N = np.random.randint(self.N_min, self.N_max + 1)
+        #mts_subset_indices = np.random.choice(np.arange(self.N_max), self.N, replace=False)
+        if(self.N > 100): 
+            lenN=np.random.randint(np.floor(self.N_min*self.N),high=self.N)  # Nmin percentage!
+        else:
+            LenN=np.round(0.9*self.N)
+        
+        ids=np.random.permutation(np.arange(self.N))  # permute all indexes between 0 and N-1
+        
+        ids=ids[:lenN]   # take first sN 
+        
+        return np.sort(ids)
+         
     def get_iter_num_of_mixtures(self):
         return np.random.randint(2, self.C+1)
 
