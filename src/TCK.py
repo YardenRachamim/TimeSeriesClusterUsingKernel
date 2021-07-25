@@ -185,11 +185,12 @@ class TCK(TransformerMixin):
     Algorithm 3 from the article
     """
     def transform(self, X: np.ndarray,
-                  R: np.ndarray = None) -> np.ndarray:
+                  R: np.ndarray = None) -> (np.ndarray, np.ndarray):
         if R is None:
             R = np.ones_like(X)
 
-        K = np.zeros((self.N, X.shape[0]))
+        K_star = np.zeros((self.N, X.shape[0]))
+        K_test = np.zeros((X.shape[0], X.shape[0]))
 
         for q in range(self.Q):
             q_params = self.q_params[q]
@@ -197,31 +198,11 @@ class TCK(TransformerMixin):
             q_posterior = q_params['posterior_probabilities']
             current_posterior = gmm_model.transform(X, R)
 
-            K += (q_posterior.T @ current_posterior)
-
-        return K
-
-    def get_pairwise_dist(self, X: np.ndarray,
-                  R: np.ndarray = None):
-
-        if R is None:
-            R = np.ones_like(X)
-
-        K_train = self.K
-        K_combined = self.transform(X, R)
-
-        K_test = np.zeros(X.shape[0], X.shape[0])
-        for q in range(self.Q):
-            q_params = self.q_params[q]
-            gmm_model = q_params['gmm_model']
-            current_posterior = gmm_model.transform(X, R)
-
+            K_star += (q_posterior.T @ current_posterior)
             K_test += (current_posterior.T @ current_posterior)
 
+        return K_star, K_test
 
-    def get_distance_matrix_from_kernel_matrix(self, K: np.ndarray):
-        pass
-         
 
 class SubsetGmmMapEm(TransformerMixin):
     """
