@@ -3,6 +3,7 @@ from sklearn.base import TransformerMixin
 from scipy.stats import norm
 from scipy.stats import multivariate_normal
 from typing import Tuple
+from numpy import inf
 
 
 class GMM_MAP_EM(TransformerMixin):
@@ -38,7 +39,7 @@ class GMM_MAP_EM(TransformerMixin):
         self.invS_0 = None
 
         # Lower threshold for distribution according to section 4.2 in the article
-        self.EPSILON = norm.pdf(3)
+        self.EPSILON = norm.logcdf(3)
         self.v_multivariate_normal_pdf = np.vectorize(norm.pdf)
 
     """
@@ -63,6 +64,7 @@ class GMM_MAP_EM(TransformerMixin):
 
         if R is None:
             R = np.ones_like(X)
+        X[R == 0] = -100000
 
         for i in range(self.num_iter):
             # Here we assumed we have a random posterior initialization,
@@ -113,10 +115,19 @@ class GMM_MAP_EM(TransformerMixin):
         for c in range(self.C):
             mean = np.tile(self.mu[c], (N, 1, 1))
             cov = np.tile(np.sqrt(self.s2[c]), (N, T, 1))
-            prob = self.v_multivariate_normal_pdf(X, loc=mean, scale=cov) ** R
-            prob[prob < self.EPSILON] = self.EPSILON
 
-            posterior[c] = prob.prod(axis=1).prod(axis=1)
+            # fst = 1 / np.sqrt(2 * np.pi * cov ** 2)
+            # snd = np.exp(-0.5 * ((X - mean) / cov) ** 2)
+            # prob = norm.cdf(X, loc=mean, scale=cov) ** R
+            prob = norm.pdf(X, loc=mean, scale=cov) ** R
+            prob[(prob < self.EPSILON)] = self.EPSILON
+            prob = np.reshape(prob, (N, V*T))
+            posterior[c] = self.theta[c] * prob.prod(axis=1)
+
+        # TODO: check if necessary
+        # if (posterior == inf).any():
+        #     print(posterior.max())
+        # posterior[posterior == inf] = np.finfo(np.float64).max
 
         return posterior / posterior.sum(axis=0)
 
@@ -128,13 +139,15 @@ class GMM_MAP_EM(TransformerMixin):
         for c in range(self.C):
             for v in range(self.V):
                 var2 = R[:, :, v].sum(axis=1).T @ self.posteriors[c]
-                temp = (X[:, :, v] - np.tile(self.mu[c, :, v].T, (self.N, 1))) ** 2
-                var1 = self.posteriors[c].T @ (R[:, :, v] * temp).sum(axis=1)
-                self.s2[c, v] = (self.N0 * self.empirical_variance[v] + var1) / (self.N0 + var2)
+                temp = (X[:, :, v] - (np.tile(self.mu[c, :, v], (self.N, 1)))) ** 2
+                var1 = self.posteriors[c].T @ ((R[:, :, v] * temp).sum(axis=1))
 
-                A = self.invS_0[:, :, v] + np.diag(R[:, :, v].T @ self.posteriors[c] / self.s2[c, v])
+                A = self.invS_0[:, :, v] + np.diag((R[:, :, v].T @ self.posteriors[c]) / self.s2[c, v])
+
                 b = (self.invS_0[:, :, v] @ self.empirical_mean[:, v]) + \
-                    ((R[:, :, v] * X[:, :, v]).T @ self.posteriors[c]) / self.s2[c, v]
+                    (((R[:, :, v] * X[:, :, v]).T @ self.posteriors[c]) / self.s2[c, v])
+
+                self.s2[c, v] = (self.N0 * self.empirical_variance[v] + var1) / (self.N0 + var2)
                 self.mu[c, :, v] = np.linalg.lstsq(A, b, rcond=-1)[0]
 
     def transform(self, X: np.ndarray, R: np.ndarray = None) -> np.ndarray:
@@ -146,4 +159,5 @@ class GMM_MAP_EM(TransformerMixin):
         if R.ndim < 3:
             R = R[None, :, :]
 
+        X[R == 0] = -100000
         return self.evaluate_posterior(X, R)
