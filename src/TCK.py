@@ -20,21 +20,19 @@ class TCK(TransformerMixin):
     :param C: maximal number of mixture components
     """
 
-    logger = None
+    logger = TCKUtils.set_logger("TCK", logging.INFO)
 
     def __init__(self, Q: int, C: int, verbose=1, n_jobs=1):
         # Model parameters
-        log_level = logging.INFO
+
         if verbose == 1:
-            log_level = logging.DEBUG
-        logger = TCKUtils.set_logger(TCK.__name__, log_level)
+            TCK.logger.setLevel(logging.DEBUG)
 
         self.n_jobs = n_jobs
         self.Q = Q
         self.C = C
 
         # TODO: delete
-        np.random.seed(8)  # only once for TCK life to ensure that randoms or permutations do not repeat.
 
         self.q_params = {}  # Dictionary to track at each iteration q the results
 
@@ -63,11 +61,16 @@ class TCK(TransformerMixin):
         :param R: a 3d matrix represent the missing values of the MTS
     """
 
-    def fit(self, X: np.ndarray, R: np.ndarray = None):
+    def fit(self, X: np.ndarray,
+            R: np.ndarray = None,
+            T_min: int = None,
+            T_max: int = None):
         self.N = X.shape[0]
         self.K = np.zeros((self.N, self.N))
 
-        self.set_randomization_fields(X)
+        self.set_randomization_fields(X,
+                                      T_min,
+                                      T_max)
 
         if R is None:
             R = np.ones_like(X)
@@ -116,13 +119,22 @@ class TCK(TransformerMixin):
         return self
 
     # region initialization
-    def set_randomization_fields(self, X: np.ndarray):
+    def set_randomization_fields(self, X: np.ndarray,
+                                 T_min: int,
+                                 T_max: int):
         # The parameters are initialized according to section 4.2 in the article
-        self.T_min = 6
-        self.T_max = X.shape[1]  # Number of time segments
+        if T_min is None:
+            self.T_min = 1
+        else:
+            self.T_min = T_min
 
-        self.V_max = X.shape[2]  # Number of attributes
+        if T_max is None:
+            self.T_max = X.shape[1]  # Number of time segments
+        else:
+            self.T_max = T_max
+
         self.V_min = 2
+        self.V_max = X.shape[2]  # Number of attributes
 
         # This just for safety, doesn't suppose to happen
         if not self.N:
@@ -134,10 +146,15 @@ class TCK(TransformerMixin):
 
     def get_iter_time_segment_indices(self):
         # TODO: check if this is what I want
-        T = np.random.randint(self.T_min, self.T_max + 1)
-        time_window = np.arange(T)
+        T = np.ceil(self.T_max / np.ceil(self.T_max / 25))
+        t1 = 0
+        t2 = np.finfo('float64').max
 
-        return time_window
+        while (t2 - t1 > T) | (t2 - t1 == 0):
+            t1 = np.random.randint(1, self.T_max - self.T_min + 1)
+            t2 = np.random.randint(t1 + self.T_min - 1, min(self.T_max, (t1 + self.T_max - 1)))
+
+        return np.arange(t1, t2)
 
     def get_iter_attributes_indices(self):
         V = np.random.randint(self.V_min, self.V_max + 1)
