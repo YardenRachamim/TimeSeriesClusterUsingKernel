@@ -21,8 +21,10 @@ class TCK(TransformerMixin):
     """
 
     logger = TCKUtils.set_logger("TCK", logging.INFO)
+    VALID_MAX_FEATURE_VALS = {'all', 'sqrt', 'log2'}
 
-    def __init__(self, Q: int, C: int, verbose=1, n_jobs=1):
+    def __init__(self, Q: int, C: int,
+                 max_features: str = 'all', verbose=1, n_jobs=1):
         # Model parameters
 
         if verbose == 1:
@@ -31,6 +33,10 @@ class TCK(TransformerMixin):
         self.n_jobs = n_jobs
         self.Q = Q
         self.C = C
+        if max_features in TCK.VALID_MAX_FEATURE_VALS:
+            self.max_features = max_features
+        else:
+            raise Exception(f"'{max_features}' is not valid for max_features please use {TCK.VALID_MAX_FEATURE_VALS}")
 
         # TODO: delete
 
@@ -38,7 +44,8 @@ class TCK(TransformerMixin):
 
         self.K = None  # Kernel matrix (the actual TCK)
         self.N = 0  # Amount of MTS (initialize during the fit method)
-
+        self.T = 0  # Longest time segment (initialize during the fit method)
+        self.V = 0  # Number of attributes(initialize during the fit method)
         # region randomization params
 
         # Time segments params
@@ -66,11 +73,11 @@ class TCK(TransformerMixin):
             T_min: int = None,
             T_max: int = None):
         self.N = X.shape[0]
+        self.T = X.shape[1]
+        self.V = X.shape[2]
         self.K = np.zeros((self.N, self.N))
 
-        self.set_randomization_fields(X,
-                                      T_min,
-                                      T_max)
+        self.set_randomization_fields(X)
 
         if R is None:
             R = np.ones_like(X)
@@ -119,22 +126,18 @@ class TCK(TransformerMixin):
         return self
 
     # region initialization
-    def set_randomization_fields(self, X: np.ndarray,
-                                 T_min: int,
-                                 T_max: int):
+    def set_randomization_fields(self, X: np.ndarray):
         # The parameters are initialized according to section 4.2 in the article
-        if T_min is None:
-            self.T_min = 1
-        else:
-            self.T_min = T_min
-
-        if T_max is None:
-            self.T_max = X.shape[1]  # Number of time segments
-        else:
-            self.T_max = T_max
+        self.T_min = 6
+        self.T_max = min(self.T, 25)  # Number of time segments
 
         self.V_min = 2
-        self.V_max = X.shape[2]  # Number of attributes
+        if self.max_features == 'sqrt':
+            self.V_max = max(2, np.ceil(np.sqrt(self.V)))
+        elif self.max_features == 'log2':
+            self.V_max = max(2, np.ceil(np.log2(self.max_features)))
+        elif self.max_features == 'all':
+            self.V_max = self.V
 
         # This just for safety, doesn't suppose to happen
         if not self.N:
@@ -142,29 +145,36 @@ class TCK(TransformerMixin):
         self.N_min = int(0.8 * self.N)  # At least 80% of the data
         self.N_max = self.N  # At most all the data
 
+        TCK.logger.info(f"randomization fields are:"
+                        f"\n(N_min, N_max)=({self.N_min}, {self.N_max})"
+                        f"\n(T_min, T_max)=({self.T_min}, {self.T_max})"
+                        f"\n(V_min, V_max)=({self.V_min}, {self.V_max})")
+
     # endregion initialization
 
     def get_iter_time_segment_indices(self):
-        # TODO: check if this is what I want
-        T = np.ceil(self.T_max / np.ceil(self.T_max / 25))
-        t1 = 0
-        t2 = np.finfo('float64').max
+        # # TODO: check if this is what I want
+        # T = np.ceil(self.T_max / np.ceil(self.T_max / 25))
+        # t1 = 0
+        # t2 = np.finfo('float64').max
+        #
+        # while (t2 - t1 > T) | (t2 - t1 == 0):
+        #     t1 = np.random.randint(1, self.T_max - self.T_min + 1)
+        #     t2 = np.random.randint(t1 + self.T_min - 1, min(self.T_max, (t1 + self.T_max - 1)))
+        T_size = np.random.randint(self.T_min, self.T_max + 1)
+        T_start = np.random.randint(0, self.T - T_size + 1)
 
-        while (t2 - t1 > T) | (t2 - t1 == 0):
-            t1 = np.random.randint(1, self.T_max - self.T_min + 1)
-            t2 = np.random.randint(t1 + self.T_min - 1, min(self.T_max, (t1 + self.T_max - 1)))
-
-        return np.arange(t1, t2)
+        return np.arange(T_start, T_start + T_size)
 
     def get_iter_attributes_indices(self):
-        V = np.random.randint(self.V_min, self.V_max + 1)
-        attributes_subset_indices = np.random.choice(np.arange(self.V_max), V, replace=False)
+        V_size = np.random.randint(self.V_min, self.V_max + 1)
+        attributes_subset_indices = np.random.choice(np.arange(self.V), V_size, replace=False)
 
         return attributes_subset_indices
 
     def get_iter_mts_indices(self):
-        N = np.random.randint(self.N_min, self.N_max + 1)
-        mts_subset_indices = np.random.choice(np.arange(self.N_max), N, replace=False)
+        N_size = np.random.randint(self.N_min, self.N_max + 1)
+        mts_subset_indices = np.random.choice(np.arange(self.N), N_size, replace=False)
 
         return mts_subset_indices
 

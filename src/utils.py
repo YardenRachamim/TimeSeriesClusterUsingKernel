@@ -3,6 +3,7 @@ import logging
 import threading
 from datetime import datetime
 import sys
+from scipy import interpolate
 
 
 class DataUtils:
@@ -56,3 +57,41 @@ class TCKUtils:
         logger = logging.getLogger(logger_name)
 
         return logger
+
+    @staticmethod
+    def interp_data(X: np.ndarray,
+                    X_len: list = None,
+                    restore: bool = False,
+                    interp_kind: str = 'linear'):
+        """
+        Interpolate data to match the same maximum length in X_len
+        If restore is True, data are interpolated back to their original length
+        data are assumed to be time-major
+        interp_kind: can be 'linear', 'nearest', 'zero', 'slinear', 'quadratic', 'cubic'
+        """
+        if X_len is None:
+            X_len = [X.shape[1] for _ in range(X.shape[0])]
+        [N, T, V] = X.shape
+        X_new = np.zeros((X.shape[0], X_len[0], X.shape[2]))
+
+        # restore original lengths
+        if not restore:
+            for n in range(N):
+                t = np.linspace(start=0, stop=X_len[n], num=T)
+                t_new = np.linspace(start=0, stop=X_len[n], num=X_len[n])
+                for v in range(V):
+                    x_n_v = X[n, :, v]
+                    f = interpolate.interp1d(t, x_n_v, kind=interp_kind)
+                    X_new[n, :X_len[n], v] = f(t_new)
+
+        # interpolate all data to length T
+        else:
+            for n in range(N):
+                t = np.linspace(start=0, stop=X_len[n], num=X_len[n])
+                t_new = np.linspace(start=0, stop=X_len[n], num=T)
+                for v in range(V):
+                    x_n_v = X[n, :X_len[n], v]
+                    f = interpolate.interp1d(t, x_n_v, kind=interp_kind)
+                    X_new[n, :, v] = f(t_new)
+
+        return X_new

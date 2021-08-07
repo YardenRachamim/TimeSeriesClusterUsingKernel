@@ -66,13 +66,26 @@ class GMM_MAP_EM(TransformerMixin):
             R = np.ones_like(X)
         X[R == 0] = -100000
 
-        for i in range(self.num_iter):
+        i = 0
+        epsilon = 1e-6  # TODO: add as input parameter
+        delta = np.inf
+
+        while i < self.num_iter and epsilon < delta:
             # Here we assumed we have a random posterior initialization,
             # hence we will start with the maximization step
+            current_posterior = self.posteriors.copy()
+
             is_first_iter = i == 0
             if not is_first_iter:
                 self.expectation_step(X, R)
+                delta = np.max(np.abs(current_posterior - self.posteriors))
             self.maximization_step(X, R)
+
+            i += 1
+
+            # TODO: delete
+            if delta <= epsilon:
+                print(i)
 
         return self
 
