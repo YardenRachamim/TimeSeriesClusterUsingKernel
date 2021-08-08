@@ -8,6 +8,7 @@ from sklearn.manifold import TSNE
 from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import accuracy_score
+from sklearn.decomposition import KernelPCA
 
 from GMM_MAP_EM import GMM_MAP_EM
 from utils import TCKUtils
@@ -18,6 +19,8 @@ from tslearn.preprocessing import TimeSeriesScalerMeanVariance
 from tslearn.metrics import cdist_ctw
 from tslearn.utils import to_time_series_dataset
 from sklearn.neighbors import KNeighborsClassifier
+
+from pathlib import Path
 
 
 def get_train_test_indices(data_array, labels_array):
@@ -79,14 +82,14 @@ def pickle_tck_model(tck_model: TCK,
                      y_train: np.ndarray, y_test: np.ndarray,
                      R_train: np.ndarray = None, R_test: np.ndarray = None
                      ):
-    with open(r"C:\Users\Yarden\Computer Science\Masters\1\Advance Machine Learning\final project\models\tck_model2", 'wb') as fos:
+    with open(r"/models/tck_model2", 'wb') as fos:
         pickle.dump(
             (tck_model, X_train, X_test, y_train, y_test, R_train, R_test), fos
         )
 
 
 def load_tck_model():
-    with open(r"C:\Users\Yarden\Computer Science\Masters\1\Advance Machine Learning\final project\models\tck_model2", 'rb') as fis:
+    with open(r"/models/tck_model2", 'rb') as fis:
         model_params = pickle.load(fis)
 
     return model_params
@@ -118,8 +121,8 @@ def get_blood_test_data(is_data_norm: bool = True):
 
     if is_data_norm:
         for v in range(1, V):
-            X_v = X[:,:, v]
-            Xte_v = Xte[:,:, v]
+            X_v = X[:, :, v]
+            Xte_v = Xte[:, :, v]
             Xv_m = np.nanmean(X_v[:])
             Xv_s = np.nanstd(X_v[:])
 
@@ -134,12 +137,23 @@ def get_blood_test_data(is_data_norm: bool = True):
 if __name__ == '__main__':
     np.random.seed(0)  # only once for TCK life to ensure that randoms or permutations do not repeat.
 
+    # Single GMM test
+    test = io.loadmat(r"C:\Users\Yarden\Computer Science\Masters\1\Advance Machine Learning\final project\src\test\test.mat")
+    X = test['sX']
+    R = test['R']
+    a0 = test['a0'][0][0]
+    b0 = test['b0'][0][0]
+    N0 = test['n0'][0][0]
+    C = test['C'][0][0]
+    gmm_model = GMM_MAP_EM(a0, b0, N0, C)
+    gmm_model.fit(X, R)
+
     # # Syntetic data
     # X_train, X_test, y_train, y_test, _, _ = get_article_data_set()
     # X_train = to_time_series_dataset(X_train)
 
-    # Blood test
-    X_train, X_test, y_train, y_test = get_blood_test_data()
+    # # Blood test
+    # X_train, X_test, y_train, y_test = get_blood_test_data()
 
     # # Wisdom data set
     # X_train, X_test, y_train, y_test = get_wisdom_data()
@@ -162,11 +176,11 @@ if __name__ == '__main__':
     # X_train_len = [24 for _ in range(X_train.shape[0])]
     # X_train = TCKUtils.interp_data(X_train, X_train_len)
 
-    # Training the model
-    R_train = (~(np.isnan(X_train))).astype(int)
-    R_test = (~(np.isnan(X_test))).astype(int)
-    tck_model = TCK(Q=30, C=40, n_jobs=4, max_features='all')
-    tck_model.fit(X_train, R_train)
+    # # Training the model
+    # R_train = (~(np.isnan(X_train))).astype(int)
+    # R_test = (~(np.isnan(X_test))).astype(int)
+    # tck_model = TCK(Q=30, C=40, n_jobs=6, max_features='all')
+    # tck_model.fit(X_train, R_train)
 
     # # Saving the model
     # pickle_tck_model(tck_model, X_train, X_test, y_train, y_test)
@@ -185,7 +199,7 @@ if __name__ == '__main__':
     # neigh.fit(tck_model.K, y_train)
 
     # Predict
-    # K_star, K_test = tck_model.transform(X_test, R_test)
+    K_star, K_test = tck_model.transform(X_test, R_test)
 
     # y_pred = neigh.predict(K_star.T)
     tck_y_pred = y_train[K_star.T.argmax(axis=1)].astype(int)
@@ -193,10 +207,11 @@ if __name__ == '__main__':
     print(accuracy)
 
     # Visualization
-    tck_X_tsne = TSNE(n_components=2,
-                  n_jobs=-1,
-                  verbose=1,
-                  init="pca").fit_transform(tck_model.K)
+    X_pca = KernelPCA(n_components=2, kernel='precomputed').fit_transform(K_star)
+    # tck_X_tsne = TSNE(n_components=2,
+    #               n_jobs=-1,
+    #               verbose=1,
+    #               init="pca").fit_transform(tck_model.K)
     #
     # # dtw_X_tsne = TSNE(n_components=2,
     # #               n_jobs=-1,
@@ -212,7 +227,5 @@ if __name__ == '__main__':
     # # axes[0].set_title("DTW")
     # # plt.show()
     #
-    # plt.scatter(tck_X_tsne[:, 0], tck_X_tsne[:, 1], c=y_test)
-    # plt.show()
-
-
+    plt.scatter(X_pca[:, 0], X_pca[:, 1], c=y_test)
+    plt.show()

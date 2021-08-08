@@ -34,7 +34,7 @@ class GMM_MAP_EM(TransformerMixin):
         self.s2 = None  # Shape CxV
 
         self.empirical_mean = None  # Shape NxT
-        self.empirical_variance = None  # Shape Vx1
+        self.empirical_cov = None  # Shape Vx1
         self.S_0 = None  # Shape TxTxV
         self.invS_0 = None
 
@@ -58,8 +58,10 @@ class GMM_MAP_EM(TransformerMixin):
         self.theta = self.init_cluster_theta()  # Small theta
         self.mu = self.init_cluster_means()  # mu of big theta
         self.s2 = self.init_cluster_variance()  # s2 of big theta
+
+        # Calculate empirical moments
         self.empirical_mean = np.nanmean(X, axis=0)  # m_v
-        self.empirical_variance = np.nanstd(X.reshape(self.N*self.T, self.V), axis=0) ** 2
+        self.empirical_cov = np.nanstd(X.reshape(self.N * self.T, self.V), axis=0) ** 2
         self.S_0, self.invS_0 = self.init_s0()
 
         if R is None:
@@ -73,19 +75,15 @@ class GMM_MAP_EM(TransformerMixin):
         while i < self.num_iter and epsilon < delta:
             # Here we assumed we have a random posterior initialization,
             # hence we will start with the maximization step
-            current_posterior = self.posteriors.copy()
-
             is_first_iter = i == 0
             if not is_first_iter:
+                current_posterior = self.posteriors.copy()
                 self.expectation_step(X, R)
                 delta = np.max(np.abs(current_posterior - self.posteriors))
+
             self.maximization_step(X, R)
 
             i += 1
-
-            # TODO: delete
-            if delta <= epsilon:
-                print(i)
 
         return self
 
@@ -96,7 +94,12 @@ class GMM_MAP_EM(TransformerMixin):
         T_2 = np.arange(self.T).reshape((self.T, 1))
 
         for v in range(self.V):
-            S_0[:, :, v] = self.empirical_variance[v] * self.b0 * np.exp((-self.a0 * (T_1 - T_2)**2))
+            S_0[:, :, v] = np.sqrt(self.empirical_cov[v]) * self.b0 * np.exp((-self.a0 * ((T_1 - T_2) ** 2)))
+
+            # TODO: delete
+            if np.linalg.cond(S_0[:, :, v], p=1) < 1e-8:
+                print("hello")
+
             invS_0[:, :, v] = np.linalg.inv(S_0[:, :, v])
         # TODO: add a condition check og invertable
 
@@ -160,7 +163,7 @@ class GMM_MAP_EM(TransformerMixin):
                 b = (self.invS_0[:, :, v] @ self.empirical_mean[:, v]) + \
                     (((R[:, :, v] * X[:, :, v]).T @ self.posteriors[c]) / self.s2[c, v])
 
-                self.s2[c, v] = (self.N0 * self.empirical_variance[v] + var1) / (self.N0 + var2)
+                self.s2[c, v] = (self.N0 * self.empirical_cov[v] + var1) / (self.N0 + var2)
                 self.mu[c, :, v] = np.linalg.lstsq(A, b, rcond=-1)[0]
 
     def transform(self, X: np.ndarray, R: np.ndarray = None) -> np.ndarray:

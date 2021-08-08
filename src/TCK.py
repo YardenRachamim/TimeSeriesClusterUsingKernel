@@ -69,9 +69,7 @@ class TCK(TransformerMixin):
     """
 
     def fit(self, X: np.ndarray,
-            R: np.ndarray = None,
-            T_min: int = None,
-            T_max: int = None):
+            R: np.ndarray = None):
         self.N = X.shape[0]
         self.T = X.shape[1]
         self.V = X.shape[2]
