@@ -137,20 +137,20 @@ def get_blood_test_data(is_data_norm: bool = True):
 if __name__ == '__main__':
     np.random.seed(0)  # only once for TCK life to ensure that randoms or permutations do not repeat.
 
-    # Single GMM test
-    test = io.loadmat(r"C:\Users\Yarden\Computer Science\Masters\1\Advance Machine Learning\final project\src\test\test.mat")
-    X = test['sX']
-    R = test['R']
-    a0 = test['a0'][0][0]
-    b0 = test['b0'][0][0]
-    N0 = test['n0'][0][0]
-    C = test['C'][0][0]
-    gmm_model = GMM_MAP_EM(a0, b0, N0, C)
-    gmm_model.fit(X, R)
+    # # Single GMM test
+    # test = io.loadmat(r"C:\Users\Yarden\Computer Science\Masters\1\Advance Machine Learning\final project\src\test\test.mat")
+    # X = test['sX']
+    # R = test['R']
+    # a0 = test['a0'][0][0]
+    # b0 = test['b0'][0][0]
+    # N0 = test['n0'][0][0]
+    # C = test['C'][0][0]
+    # gmm_model = GMM_MAP_EM(a0, b0, N0, C)
+    # gmm_model.fit(X, R)
 
-    # # Syntetic data
-    # X_train, X_test, y_train, y_test, _, _ = get_article_data_set()
-    # X_train = to_time_series_dataset(X_train)
+    # Syntetic data
+    X_train, X_test, y_train, y_test, _, _ = get_article_data_set()
+    X_train = to_time_series_dataset(X_train)
 
     # # Blood test
     # X_train, X_test, y_train, y_test = get_blood_test_data()
@@ -168,7 +168,7 @@ if __name__ == '__main__':
 
     # # Arabic digits
     # X_train, X_test, y_train, y_test = load_ucr_dataset('SpokenArabicDigits')
-    #
+
     # # Preprocess
     # scaler = TimeSeriesScalerMeanVariance()
     # X_train = scaler.fit_transform(X_train)
@@ -176,11 +176,11 @@ if __name__ == '__main__':
     # X_train_len = [24 for _ in range(X_train.shape[0])]
     # X_train = TCKUtils.interp_data(X_train, X_train_len)
 
-    # # Training the model
-    # R_train = (~(np.isnan(X_train))).astype(int)
-    # R_test = (~(np.isnan(X_test))).astype(int)
-    # tck_model = TCK(Q=30, C=40, n_jobs=6, max_features='all')
-    # tck_model.fit(X_train, R_train)
+    # Training the model
+    R_train = (~(np.isnan(X_train))).astype(int)
+    R_test = (~(np.isnan(X_test))).astype(int)
+    tck_model = TCK(Q=30, C=40, n_jobs=6, max_features='all')
+    tck_model.fit(X_train, R_train)
 
     # # Saving the model
     # pickle_tck_model(tck_model, X_train, X_test, y_train, y_test)

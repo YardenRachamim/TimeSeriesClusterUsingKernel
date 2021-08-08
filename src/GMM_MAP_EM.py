@@ -166,6 +166,7 @@ class GMM_MAP_EM(TransformerMixin):
                 self.s2[c, v] = (self.N0 * self.empirical_cov[v] + var1) / (self.N0 + var2)
                 self.mu[c, :, v] = np.linalg.lstsq(A, b, rcond=-1)[0]
 
+
     def transform(self, X: np.ndarray, R: np.ndarray = None) -> np.ndarray:
         is_dim_added = False
         if X.ndim < 3:

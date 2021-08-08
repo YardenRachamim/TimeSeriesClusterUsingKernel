@@ -41,6 +41,7 @@ class TCK(TransformerMixin):
         # TODO: delete
 
         self.q_params = {}  # Dictionary to track at each iteration q the results
+        self.ranges = None
 
         self.K = None  # Kernel matrix (the actual TCK)
         self.N = 0  # Amount of MTS (initialize during the fit method)
@@ -81,8 +82,8 @@ class TCK(TransformerMixin):
             R = np.ones_like(X)
 
         params = []
-        ranges = list(product(range(self.Q), range(2, self.C + 1)))
-        for i, (q, c) in enumerate(ranges):
+        self.ranges = list(product(range(self.Q), range(2, self.C + 1)))
+        for i, (q, c) in enumerate(self.ranges):
             # TODO: can be pararalized for performance
             hyperparameters = TCKUtils.get_random_gmm_hyperparameters()
             time_segments_indices = self.get_iter_time_segment_indices()
@@ -98,7 +99,7 @@ class TCK(TransformerMixin):
                                        time_segments_indices,
                                        attributes_indices)
 
-            log_msg = (f"({i + 1}/{len(ranges)}): q params are: q={q}, C={C}, a0={hyperparameters['a0']:.3f},"
+            log_msg = (f"({i + 1}/{len(self.ranges)}): q params are: q={q}, C={C}, a0={hyperparameters['a0']:.3f},"
                        f" b0={hyperparameters['b0']:.3f},"
                        f" N0={hyperparameters['N0']:.3f},"
                        f" X.shape={mts_indices.shape[0], time_segments_indices.shape[0], attributes_indices.shape[0]}")
@@ -183,13 +184,13 @@ class TCK(TransformerMixin):
     :param q: current iteration
     """
 
-    def update_q_params(self, q: int,
+    def update_q_params(self, i: int,
                         hyperparameters,
                         time_segments_indices,
                         attributes_indices,
                         mts_indices,
                         gmm_mixture_params):
-        self.q_params[q] = {
+        self.q_params[i] = {
             'hyperparameters': hyperparameters,
             'time_segments_indices': time_segments_indices,
             'attributes_indices': attributes_indices,
@@ -209,8 +210,8 @@ class TCK(TransformerMixin):
         K_star = np.zeros((self.N, X.shape[0]))
         K_test = np.zeros((X.shape[0], X.shape[0]))
 
-        for q in range(self.Q):
-            q_params = self.q_params[q]
+        for i, (_, _) in enumerate(self.ranges):
+            q_params = self.q_params[i]
             gmm_model = q_params['gmm_model']
             q_posterior = q_params['posterior_probabilities']
             current_posterior = gmm_model.transform(X, R)
