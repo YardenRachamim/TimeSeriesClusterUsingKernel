@@ -95,11 +95,6 @@ class GMM_MAP_EM(TransformerMixin):
 
         for v in range(self.V):
             S_0[:, :, v] = np.sqrt(self.empirical_cov[v]) * self.b0 * np.exp((-self.a0 * ((T_1 - T_2) ** 2)))
-
-            # TODO: delete
-            if np.linalg.cond(S_0[:, :, v], p=1) < 1e-8:
-                print("hello")
-
             invS_0[:, :, v] = np.linalg.inv(S_0[:, :, v])
         # TODO: add a condition check og invertable
 
@@ -131,19 +126,12 @@ class GMM_MAP_EM(TransformerMixin):
         for c in range(self.C):
             mean = np.tile(self.mu[c], (N, 1, 1))
             cov = np.tile(np.sqrt(self.s2[c]), (N, T, 1))
-
-            # fst = 1 / np.sqrt(2 * np.pi * cov ** 2)
-            # snd = np.exp(-0.5 * ((X - mean) / cov) ** 2)
-            # prob = norm.cdf(X, loc=mean, scale=cov) ** R
             prob = norm.pdf(X, loc=mean, scale=cov) ** R
+
             prob[(prob < self.EPSILON)] = self.EPSILON
             prob = np.reshape(prob, (N, V*T))
-            posterior[c] = self.theta[c] * prob.prod(axis=1)
 
-        # TODO: check if necessary
-        # if (posterior == inf).any():
-        #     print(posterior.max())
-        # posterior[posterior == inf] = np.finfo(np.float64).max
+            posterior[c] = self.theta[c] * prob.prod(axis=1)
 
         return posterior / posterior.sum(axis=0)
 

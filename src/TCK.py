@@ -24,7 +24,8 @@ class TCK(TransformerMixin):
     VALID_MAX_FEATURE_VALS = {'all', 'sqrt', 'log2'}
 
     def __init__(self, Q: int, C: int,
-                 max_features: str = 'all', verbose=1, n_jobs=1):
+                 max_features: str = 'all',
+                 verbose=1, n_jobs=1):
         # Model parameters
 
         if verbose == 1:
@@ -75,7 +76,6 @@ class TCK(TransformerMixin):
         self.T = X.shape[1]
         self.V = X.shape[2]
         self.K = np.zeros((self.N, self.N))
-
         self.set_randomization_fields(X)
 
         if R is None:
@@ -203,7 +203,8 @@ class TCK(TransformerMixin):
     """
 
     def transform(self, X: np.ndarray,
-                  R: np.ndarray = None) -> (np.ndarray, np.ndarray):
+                  R: np.ndarray = None,
+                  include_test_similarity: bool = True) -> (np.ndarray, np.ndarray):
         if R is None:
             R = np.ones_like(X)
 
@@ -217,8 +218,8 @@ class TCK(TransformerMixin):
             current_posterior = gmm_model.transform(X, R)
 
             K_star += (q_posterior.T @ current_posterior)
-            K_test += (current_posterior.T @ current_posterior)
-
+            if include_test_similarity:
+                K_test += (current_posterior.T @ current_posterior)
         return K_star, K_test
 
 
