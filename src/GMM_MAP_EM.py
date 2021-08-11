@@ -39,7 +39,7 @@ class GMM_MAP_EM(TransformerMixin):
         self.invS_0 = None
 
         # Lower threshold for distribution according to section 4.2 in the article
-        self.EPSILON = norm.logcdf(3)
+        self.EPSILON = norm.pdf(3)
         self.v_multivariate_normal_pdf = np.vectorize(norm.pdf)
 
     """
