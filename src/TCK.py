@@ -71,7 +71,7 @@ class TCK(TransformerMixin):
     """
 
     def fit(self, X: np.ndarray,
-            R: np.ndarray = None):
+                    R: np.ndarray = None):
         self.N = X.shape[0]
         self.T = X.shape[1]
         self.V = X.shape[2]
@@ -109,9 +109,7 @@ class TCK(TransformerMixin):
             self.update_q_params(i, hyperparameters, time_segments_indices, attributes_indices,
                                  mts_indices, C)
 
-        processes = self.n_jobs
-        if self.n_jobs == -1:
-            processes = multiprocessing.cpu_count() - 1
+        processes = self.set_processes()
 
         with mp.Pool(processes=processes) as pool:
             res = pool.starmap(TCKUtils.single_fit, params)
@@ -125,6 +123,14 @@ class TCK(TransformerMixin):
         return self
 
     # region initialization
+    def set_processes(self):
+        processes = self.n_jobs
+
+        if self.n_jobs == -1:
+            processes = multiprocessing.cpu_count() - 1
+
+        return processes
+
     def set_randomization_fields(self, X: np.ndarray):
         # The parameters are initialized according to section 4.2 in the article
         self.T_min = 6
@@ -151,6 +157,7 @@ class TCK(TransformerMixin):
 
     # endregion initialization
 
+    # region iteration arguments
     def get_iter_time_segment_indices(self):
         # # TODO: check if this is what I want
         # T = np.ceil(self.T_max / np.ceil(self.T_max / 25))
@@ -177,13 +184,6 @@ class TCK(TransformerMixin):
 
         return mts_subset_indices
 
-    def get_iter_num_of_mixtures(self, current_iter_num: int):
-        return max(self.C - current_iter_num, 2)
-
-    """
-    :param q: current iteration
-    """
-
     def update_q_params(self, i: int,
                         hyperparameters,
                         time_segments_indices,
@@ -197,11 +197,11 @@ class TCK(TransformerMixin):
             'mts_indices': mts_indices,
             'gmm_mixture_params': gmm_mixture_params
         }
+    # endregion iteration arguments
 
     """
     Algorithm 3 from the article
     """
-
     def transform(self, X: np.ndarray,
                   R: np.ndarray = None,
                   include_test_similarity: bool = True) -> (np.ndarray, np.ndarray):
