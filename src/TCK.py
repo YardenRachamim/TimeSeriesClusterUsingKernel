@@ -10,6 +10,7 @@ from GMM_MAP_EM import GMM_MAP_EM
 from utils import DataUtils, TCKUtils
 import multiprocessing as mp
 from itertools import product
+from functools import reduce
 
 
 class TCK(TransformerMixin):
@@ -81,7 +82,9 @@ class TCK(TransformerMixin):
         if R is None:
             R = np.ones_like(X)
 
-        params = []
+        processes = self.set_processes()
+
+        single_gmm_fit_params = []
         self.ranges = list(product(range(self.Q), range(2, self.C + 1)))
         for i, (q, c) in enumerate(self.ranges):
             # TODO: can be pararalized for performance
@@ -104,21 +107,25 @@ class TCK(TransformerMixin):
                        f" N0={hyperparameters['N0']:.3f},"
                        f" X.shape={mts_indices.shape[0], time_segments_indices.shape[0], attributes_indices.shape[0]}")
 
-            params.append((i, gmm_model, X, R, log_msg))
+            single_gmm_fit_params.append((i, gmm_model, X, R, log_msg))
 
             self.update_q_params(i, hyperparameters, time_segments_indices, attributes_indices,
                                  mts_indices, C)
 
-        processes = self.set_processes()
-
         with mp.Pool(processes=processes) as pool:
-            res = pool.starmap(TCKUtils.single_fit, params)
+            single_gmm_fit_results = pool.starmap(TCKUtils.single_gmm_fit, single_gmm_fit_params)
 
-        for i, trained_model in res:
-            posterior_probabilities = trained_model.transform(X, R)
-            self.q_params[i]['posterior_probabilities'] = posterior_probabilities
-            self.q_params[i]['gmm_model'] = trained_model
-            self.K += (posterior_probabilities.T @ posterior_probabilities)
+        single_similarity_calculation_results = []
+        with mp.Pool(processes=processes) as pool:
+            for i, trained_gmm_model in single_gmm_fit_results:
+                args = (i, trained_gmm_model, X, R)
+                single_similarity_calculation_results.append(pool.apply_async(TCKUtils.single_simalerity_calculation, args))
+
+            for r in single_similarity_calculation_results:
+                i, trained_gmm_model, posterior_probabilities, K = r.get()
+                self.q_params[i]['posterior_probabilities'] = posterior_probabilities
+                self.q_params[i]['gmm_model'] = trained_gmm_model
+                self.K += K
 
         return self
 
