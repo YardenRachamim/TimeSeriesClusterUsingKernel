@@ -3,6 +3,8 @@ from typing import Dict
 
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.metrics.pairwise import pairwise_kernels, pairwise_distances
+
 import logging
 import logging.handlers
 
@@ -24,16 +26,19 @@ class TCK(TransformerMixin):
 
     logger = TCKUtils.set_logger("TCK", logging.INFO)
     VALID_MAX_FEATURE_VALS = {'all', 'sqrt', 'log2'}
-    VALID_SIMILARITY_FUNCTION_VALS = {'jensenshannon', 'dot'}
+    VALID_SIMILARITY_FUNCTION_VALS = {'jensenshannon',
+                                      'additive_chi2', 'chi2', 'linear', 'poly', 'polynomial', 'rbf', 'laplacian', 'sigmoid', 'cosine'}
 
     def __init__(self, Q: int, C: int,
                  max_features: str = 'all',
-                 similarity_function: str = 'dot',
+                 similarity_function: str = 'linear',
                  verbose=1, n_jobs=1):
         # Model parameters
 
         if verbose == 1:
-            TCK.logger.setLevel(logging.DEBUG)
+            TCK.logger.setLevel(logging.INFO)
+        else:
+            TCK.logger.setLevel(logging.WARN)
 
         self.n_jobs = n_jobs
         self.Q = Q
@@ -42,9 +47,6 @@ class TCK(TransformerMixin):
         self.set_max_features(max_features)
         self.similarity_function = None
         self.set_similarity_function(similarity_function)
-
-        # TODO: delete
-
         self.q_params = {}  # Dictionary to track at each iteration q the results
         self.ranges = None
 
@@ -68,71 +70,71 @@ class TCK(TransformerMixin):
 
         # endregion randomization params
 
+
+
+    # def _fit(self, X: np.ndarray,
+    #          R: np.ndarray = None):
+    #     self.N = X.shape[0]
+    #     self.T = X.shape[1]
+    #     self.V = X.shape[2]
+    #     self.K = np.zeros((self.N, self.N))
+    #     self.set_randomization_fields(X)
+    #
+    #     if R is None:
+    #         R = np.ones_like(X)
+    #
+    #     processes = self.set_processes()
+    #
+    #     single_gmm_fit_params = []
+    #     self.ranges = list(product(range(self.Q), range(2, self.C + 1)))
+    #     for i, (q, c) in enumerate(self.ranges):
+    #         # TODO: can be pararalized for performance
+    #         hyperparameters = TCKUtils.get_random_gmm_hyperparameters()
+    #         time_segments_indices = self.get_iter_time_segment_indices()
+    #         attributes_indices = self.get_iter_attributes_indices()
+    #         mts_indices = self.get_iter_mts_indices()
+    #         C = c
+    #         gmm_map_em_model = GMM_MAP_EM(a0=hyperparameters['a0'],
+    #                                       b0=hyperparameters['b0'],
+    #                                       N0=hyperparameters['N0'],
+    #                                       C=C)
+    #         gmm_model = SubsetGmmMapEm(gmm_map_em_model,
+    #                                    mts_indices,
+    #                                    time_segments_indices,
+    #                                    attributes_indices)
+    #
+    #         log_msg = (f"({i + 1}/{len(self.ranges)}): q params are: q={q}, C={C}, a0={hyperparameters['a0']:.3f},"
+    #                    f" b0={hyperparameters['b0']:.3f},"
+    #                    f" N0={hyperparameters['N0']:.3f},"
+    #                    f" X.shape={mts_indices.shape[0], time_segments_indices.shape[0], attributes_indices.shape[0]}")
+    #
+    #         single_gmm_fit_params.append((i, gmm_model, X, R, log_msg))
+    #
+    #         self.update_q_params(i, hyperparameters, time_segments_indices, attributes_indices,
+    #                              mts_indices, C)
+    #
+    #     with mp.Pool(processes=processes) as pool:
+    #         single_gmm_fit_results = pool.starmap(TCKUtils.single_gmm_fit, single_gmm_fit_params)
+    #
+    #     single_similarity_calculation_results = []
+    #     with mp.Pool(processes=processes) as pool:
+    #         for i, trained_gmm_model in single_gmm_fit_results:
+    #             args = (i, trained_gmm_model, X, R, self.similarity_function)
+    #             single_similarity_calculation_results.append(
+    #                 pool.apply_async(TCKUtils.single_similarity_calculation, args))
+    #
+    #         for r in single_similarity_calculation_results:
+    #             i, trained_gmm_model, posterior_probabilities, K = r.get()
+    #             self.q_params[i]['posterior_probabilities'] = posterior_probabilities
+    #             self.q_params[i]['gmm_model'] = trained_gmm_model
+    #             self.K += K
+    #
+    #     return self
     """
         Algorithm 2 from the article
         :param X: a 3d matrix represent MTS (num_of_mts, max_time_window, attributes)
         :param R: a 3d matrix represent the missing values of the MTS
     """
-
-    def _fit(self, X: np.ndarray,
-             R: np.ndarray = None):
-        self.N = X.shape[0]
-        self.T = X.shape[1]
-        self.V = X.shape[2]
-        self.K = np.zeros((self.N, self.N))
-        self.set_randomization_fields(X)
-
-        if R is None:
-            R = np.ones_like(X)
-
-        processes = self.set_processes()
-
-        single_gmm_fit_params = []
-        self.ranges = list(product(range(self.Q), range(2, self.C + 1)))
-        for i, (q, c) in enumerate(self.ranges):
-            # TODO: can be pararalized for performance
-            hyperparameters = TCKUtils.get_random_gmm_hyperparameters()
-            time_segments_indices = self.get_iter_time_segment_indices()
-            attributes_indices = self.get_iter_attributes_indices()
-            mts_indices = self.get_iter_mts_indices()
-            C = c
-            gmm_map_em_model = GMM_MAP_EM(a0=hyperparameters['a0'],
-                                          b0=hyperparameters['b0'],
-                                          N0=hyperparameters['N0'],
-                                          C=C)
-            gmm_model = SubsetGmmMapEm(gmm_map_em_model,
-                                       mts_indices,
-                                       time_segments_indices,
-                                       attributes_indices)
-
-            log_msg = (f"({i + 1}/{len(self.ranges)}): q params are: q={q}, C={C}, a0={hyperparameters['a0']:.3f},"
-                       f" b0={hyperparameters['b0']:.3f},"
-                       f" N0={hyperparameters['N0']:.3f},"
-                       f" X.shape={mts_indices.shape[0], time_segments_indices.shape[0], attributes_indices.shape[0]}")
-
-            single_gmm_fit_params.append((i, gmm_model, X, R, log_msg))
-
-            self.update_q_params(i, hyperparameters, time_segments_indices, attributes_indices,
-                                 mts_indices, C)
-
-        with mp.Pool(processes=processes) as pool:
-            single_gmm_fit_results = pool.starmap(TCKUtils.single_gmm_fit, single_gmm_fit_params)
-
-        single_similarity_calculation_results = []
-        with mp.Pool(processes=processes) as pool:
-            for i, trained_gmm_model in single_gmm_fit_results:
-                args = (i, trained_gmm_model, X, R, self.similarity_function)
-                single_similarity_calculation_results.append(
-                    pool.apply_async(TCKUtils.single_similarity_calculation, args))
-
-            for r in single_similarity_calculation_results:
-                i, trained_gmm_model, posterior_probabilities, K = r.get()
-                self.q_params[i]['posterior_probabilities'] = posterior_probabilities
-                self.q_params[i]['gmm_model'] = trained_gmm_model
-                self.K += K
-
-        return self
-
     def fit(self, X: np.ndarray,
             R: np.ndarray = None):
         self.N = X.shape[0]
@@ -196,6 +198,7 @@ class TCK(TransformerMixin):
         return self
 
     @staticmethod
+    # TODO: add similarity_function params
     def calculate_similarity(i: int,
                              p: np.ndarray,
                              q: np.ndarray,
@@ -203,9 +206,11 @@ class TCK(TransformerMixin):
         K = None
 
         if similarity_function == 'jensenshannon':
-            K = np.array([jensenshannon(p, q, base=2) for p, q in product(p, q)]).reshape(p.shape[0], q.shape[0])
-        elif similarity_function == 'dot':
-            K = p @ q.T
+            K = np.exp(-0.1 * (pairwise_distances(p, q, metric=jensenshannon, base=2)) ** 2)
+        else:
+            K = pairwise_kernels(p, q, metric=similarity_function)
+
+        # TODO: check that K is a kernel.
 
         return i, K
 
@@ -335,12 +340,12 @@ class TCK(TransformerMixin):
                 args = (i, q_posterior, current_posterior, self.similarity_function)
                 results.append(pool.apply_async(TCK.calculate_similarity, args))
 
-                TCK.logger.info(f"({i+1}/{self.ranges}) starting transforming")
+                TCK.logger.info(f"({i+1}/{len(self.ranges)}) starting transforming")
 
             for r in results:
                 i, K = r.get()
                 K_star += K
-                TCK.logger.info(f"(finished transforming {i + 1}/{self.ranges}) ")
+                TCK.logger.info(f"(finished transforming {i + 1}/{len(self.ranges)}) ")
 
         return K_star
 
