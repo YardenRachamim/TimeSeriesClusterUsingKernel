@@ -1,5 +1,5 @@
 import multiprocessing
-from typing import Dict
+from typing import Union, Callable
 
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -12,7 +12,7 @@ from GMM_MAP_EM import GMM_MAP_EM
 from utils import DataUtils, TCKUtils
 import multiprocessing as mp
 from itertools import product
-from functools import reduce
+from functools import reduce, partial
 from scipy.spatial.distance import jensenshannon
 
 
@@ -49,6 +49,9 @@ class TCK(TransformerMixin):
         self.set_similarity_function(similarity_function)
         self.q_params = {}  # Dictionary to track at each iteration q the results
         self.ranges = None
+        self.iter_ranges = None
+        self.total_iters = None
+        self.iter = None
 
         self.K = None  # Kernel matrix (the actual TCK)
         self.N = 0  # Amount of MTS (initialize during the fit method)
@@ -70,88 +73,44 @@ class TCK(TransformerMixin):
 
         # endregion randomization params
 
-
-
-    # def _fit(self, X: np.ndarray,
-    #          R: np.ndarray = None):
-    #     self.N = X.shape[0]
-    #     self.T = X.shape[1]
-    #     self.V = X.shape[2]
-    #     self.K = np.zeros((self.N, self.N))
-    #     self.set_randomization_fields(X)
-    #
-    #     if R is None:
-    #         R = np.ones_like(X)
-    #
-    #     processes = self.set_processes()
-    #
-    #     single_gmm_fit_params = []
-    #     self.ranges = list(product(range(self.Q), range(2, self.C + 1)))
-    #     for i, (q, c) in enumerate(self.ranges):
-    #         # TODO: can be pararalized for performance
-    #         hyperparameters = TCKUtils.get_random_gmm_hyperparameters()
-    #         time_segments_indices = self.get_iter_time_segment_indices()
-    #         attributes_indices = self.get_iter_attributes_indices()
-    #         mts_indices = self.get_iter_mts_indices()
-    #         C = c
-    #         gmm_map_em_model = GMM_MAP_EM(a0=hyperparameters['a0'],
-    #                                       b0=hyperparameters['b0'],
-    #                                       N0=hyperparameters['N0'],
-    #                                       C=C)
-    #         gmm_model = SubsetGmmMapEm(gmm_map_em_model,
-    #                                    mts_indices,
-    #                                    time_segments_indices,
-    #                                    attributes_indices)
-    #
-    #         log_msg = (f"({i + 1}/{len(self.ranges)}): q params are: q={q}, C={C}, a0={hyperparameters['a0']:.3f},"
-    #                    f" b0={hyperparameters['b0']:.3f},"
-    #                    f" N0={hyperparameters['N0']:.3f},"
-    #                    f" X.shape={mts_indices.shape[0], time_segments_indices.shape[0], attributes_indices.shape[0]}")
-    #
-    #         single_gmm_fit_params.append((i, gmm_model, X, R, log_msg))
-    #
-    #         self.update_q_params(i, hyperparameters, time_segments_indices, attributes_indices,
-    #                              mts_indices, C)
-    #
-    #     with mp.Pool(processes=processes) as pool:
-    #         single_gmm_fit_results = pool.starmap(TCKUtils.single_gmm_fit, single_gmm_fit_params)
-    #
-    #     single_similarity_calculation_results = []
-    #     with mp.Pool(processes=processes) as pool:
-    #         for i, trained_gmm_model in single_gmm_fit_results:
-    #             args = (i, trained_gmm_model, X, R, self.similarity_function)
-    #             single_similarity_calculation_results.append(
-    #                 pool.apply_async(TCKUtils.single_similarity_calculation, args))
-    #
-    #         for r in single_similarity_calculation_results:
-    #             i, trained_gmm_model, posterior_probabilities, K = r.get()
-    #             self.q_params[i]['posterior_probabilities'] = posterior_probabilities
-    #             self.q_params[i]['gmm_model'] = trained_gmm_model
-    #             self.K += K
-    #
-    #     return self
     """
         Algorithm 2 from the article
         :param X: a 3d matrix represent MTS (num_of_mts, max_time_window, attributes)
         :param R: a 3d matrix represent the missing values of the MTS
     """
     def fit(self, X: np.ndarray,
-            R: np.ndarray = None):
-        self.N = X.shape[0]
-        self.T = X.shape[1]
-        self.V = X.shape[2]
-        self.K = np.zeros((self.N, self.N))
-        self.set_randomization_fields(X)
+            R: np.ndarray = None,
+            warm_start: bool = False):
+        if not warm_start:
+            self.N = X.shape[0]
+            self.T = X.shape[1]
+            self.V = X.shape[2]
+            self.K = np.zeros((self.N, self.N))
+            self.set_randomization_fields(X)
 
-        if R is None:
-            R = np.ones_like(X)
+            if R is None:
+                R = np.ones_like(X)
 
+            self.ranges = set(product(range(self.Q), range(2, self.C + 1)))
+            self.iter_ranges = self.ranges
+            self.iter = 0
+        else:
+            # Else warm start is on
+            #  #(all iteration) - #(already run)
+            self.iter_ranges = set(product(range(self.Q), range(2, self.C + 1))) - self.ranges
+            # Stay with only the new ranges
+            self.ranges = self.iter_ranges.union(self.ranges)
+
+            if (self.N != X.shape[0]) or (self.T != X.shape[1]) or (self.V != X.shape[2]):
+                raise Exception(f"expected shape {(self.N, self.T, self.V)} but got {X.shape} instead")
+
+        self.total_iters = len(self.ranges)
         processes = self.set_processes()
 
-        self.ranges = list(product(range(self.Q), range(2, self.C + 1)))
-        with mp.Pool(processes=processes) as pool:
+        with mp.pool.ThreadPool(processes=processes) as pool:
             single_gmm_fit_results = []
-            for i, (q, c) in enumerate(self.ranges):
+            for i, (q, c) in enumerate(self.iter_ranges):
+                self.iter += 1
                 hyperparameters = TCKUtils.get_random_gmm_hyperparameters()
                 time_segments_indices = self.get_iter_time_segment_indices()
                 attributes_indices = self.get_iter_attributes_indices()
@@ -166,14 +125,14 @@ class TCK(TransformerMixin):
                                            time_segments_indices,
                                            attributes_indices)
 
-                self.update_q_params(i, hyperparameters, time_segments_indices, attributes_indices,
+                self.update_q_params(self.iter, hyperparameters, time_segments_indices, attributes_indices,
                                      mts_indices, C)
 
-                args = (i, gmm_model, X, R)
+                args = (self.iter, gmm_model, X, R)
                 single_gmm_fit_results.append(pool.apply_async(TCK.single_fit, args))
 
                 TCK.logger.info(
-                    f"({i+1}/{len(self.ranges)}): q params are: q={q}, C={C}, a0={hyperparameters['a0']:.3f},"
+                    f"({self.iter}/{self.total_iters}): q params are: q={q}, C={C}, a0={hyperparameters['a0']:.3f},"
                     f" b0={hyperparameters['b0']:.3f},"
                     f" N0={hyperparameters['N0']:.3f},"
                     f" X.shape={mts_indices.shape[0], time_segments_indices.shape[0], attributes_indices.shape[0]}")
@@ -181,29 +140,43 @@ class TCK(TransformerMixin):
             single_similarity_calculation_results = []
             for r in single_gmm_fit_results:
                 i, trained_gmm_model = r.get()
-                TCK.logger.info(f"fiinished training GMM number ({i+1}/{len(self.ranges)})")
+                TCK.logger.info(f"fiinished training GMM number ({i}/{self.total_iters})")
                 current_posterior = trained_gmm_model.transform(X, R)
                 self.q_params[i]['posterior_probabilities'] = current_posterior
                 self.q_params[i]['gmm_model'] = trained_gmm_model
 
-                args = (i, current_posterior, current_posterior, self.similarity_function)
-                single_similarity_calculation_results.append(pool.apply_async(TCK.calculate_similarity, args))
+                # args = i, current_posterior, current_posterior, self.similarity_function
+                # # single_similarity_calculation_results.append(pool.apply_async(TCK.calculate_similarity, args))
+                # single_similarity_calculation_results.append(partial(TCK.calculate_similarity, *args))
 
-            for r in single_similarity_calculation_results:
-                i, similarity_matrix = r.get()
-
-                self.K += similarity_matrix
-                TCK.logger.info(f"finished ({i + 1}/{len(self.ranges)})")
+            self.K = self.transform(X, R, use_n_jobs=False)
+            # res = pool.imap(partial.__call__, single_similarity_calculation_results)
+            # self.K = reduce(np.add, res)[1]
 
         return self
+
+    def set_params(self, **kwargs):
+        # Must be called before fit while warm_Start=True
+        if 'Q' in kwargs.keys():
+            self.Q = kwargs['Q']
+        if 'C' in kwargs.keys():
+            self.C = kwargs['C']
+        if 'n_jobs' in kwargs.keys():
+            self.n_jobs = kwargs['n_jobs']
+
 
     @staticmethod
     # TODO: add similarity_function params
     def calculate_similarity(i: int,
-                             p: np.ndarray,
-                             q: np.ndarray,
+                             p: Union[np.ndarray, Callable],
+                             q: Union[np.ndarray, Callable],
                              similarity_function: str):
         K = None
+
+        if callable(p):
+            p = p()
+        if callable(q):
+            q = q()
 
         if similarity_function == 'jensenshannon':
             K = np.exp(-0.1 * (pairwise_distances(p, q, metric=jensenshannon, base=2)) ** 2)
@@ -318,7 +291,7 @@ class TCK(TransformerMixin):
 
     def transform(self, X: np.ndarray,
                   R: np.ndarray = None,
-                  use_n_jobs: bool = True) -> (np.ndarray, np.ndarray):
+                  use_n_jobs: bool = False) -> (np.ndarray, np.ndarray):
         if R is None:
             R = np.ones_like(X)
 
@@ -329,23 +302,22 @@ class TCK(TransformerMixin):
         else:
             processes = 1
 
-        with mp.Pool(processes=processes) as pool:
+        with mp.pool.ThreadPool(processes=processes) as pool:
             results = []
 
-            for i, (_, _) in enumerate(self.ranges):
+            for i in self.q_params.keys():
                 q_params = self.q_params[i]
                 gmm_model = q_params['gmm_model']
                 q_posterior = q_params['posterior_probabilities']
-                current_posterior = gmm_model.transform(X, R)
+                current_posterior = partial(gmm_model.transform, X, R)
                 args = (i, q_posterior, current_posterior, self.similarity_function)
-                results.append(pool.apply_async(TCK.calculate_similarity, args))
+                results.append(partial(TCK.calculate_similarity, *args))
 
-                TCK.logger.info(f"({i+1}/{len(self.ranges)}) starting transforming")
+                TCK.logger.info(f"({i}/{self.total_iters}) start transforming")
 
-            for r in results:
-                i, K = r.get()
+            for i, K in pool.imap(partial.__call__, results):
                 K_star += K
-                TCK.logger.info(f"(finished transforming {i + 1}/{len(self.ranges)}) ")
+                TCK.logger.info(f"(finished transforming {i}/{len(self.ranges)})")
 
         return K_star
 

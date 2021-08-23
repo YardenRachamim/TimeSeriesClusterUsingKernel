@@ -2,8 +2,11 @@ import numpy as np
 from sklearn.base import TransformerMixin
 from scipy.stats import norm
 from scipy.stats import multivariate_normal
-from typing import Tuple
+from typing import Tuple, Callable
 from numpy import inf
+from scipy import linalg
+import sys
+from utils import LinearAlgebraUtils
 
 
 class GMM_MAP_EM(TransformerMixin):
@@ -49,11 +52,9 @@ class GMM_MAP_EM(TransformerMixin):
     """
     def fit(self, X: np.ndarray,
             R: np.ndarray = None):
-        # TODO: change to more indicative names, for now follow the matlab code notations
         self.N = X.shape[0]
         self.T = X.shape[1]
         self.V = X.shape[2]
-        # TODO: initialize correctly
         self.posteriors = self.init_cluster_posteriors()  # Big pi in the algorithm
         self.theta = self.init_cluster_theta()  # Small theta
         self.mu = self.init_cluster_means()  # mu of big theta
@@ -95,8 +96,9 @@ class GMM_MAP_EM(TransformerMixin):
 
         for v in range(self.V):
             S_0[:, :, v] = np.sqrt(self.empirical_cov[v]) * self.b0 * np.exp((-self.a0 * ((T_1 - T_2) ** 2)))
+            if not LinearAlgebraUtils.is_invertible(S_0[:, :, v]):
+                S_0[:, :, v] += 0.1 * S_0[0, 0, v] * np.identity(self.T)
             invS_0[:, :, v] = np.linalg.inv(S_0[:, :, v])
-        # TODO: add a condition check og invertable
 
         return S_0, invS_0
 
@@ -154,7 +156,6 @@ class GMM_MAP_EM(TransformerMixin):
                 self.s2[c, v] = (self.N0 * self.empirical_cov[v] + var1) / (self.N0 + var2)
                 self.mu[c, :, v] = np.linalg.lstsq(A, b, rcond=-1)[0]
 
-
     def transform(self, X: np.ndarray, R: np.ndarray = None) -> np.ndarray:
         is_dim_added = False
         if X.ndim < 3:
@@ -165,4 +166,4 @@ class GMM_MAP_EM(TransformerMixin):
             R = R[None, :, :]
 
         X[R == 0] = -100000
-        return self.evaluate_posterior(X, R)
+        return self.evaluate_posterior(X, R).T
