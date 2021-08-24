@@ -1,5 +1,6 @@
 import multiprocessing
-from typing import Union, Callable
+from typing import Union, Callable, List, Iterable, Set
+from collections.abc import Iterable as Iter
 
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -31,7 +32,7 @@ class TCK(TransformerMixin):
 
     def __init__(self, Q: int, C: int,
                  max_features: str = 'all',
-                 similarity_function: str = 'linear',
+                 similarity_function: Union[str, Iterable[str]] = 'linear',
                  verbose=1, n_jobs=1):
         # Model parameters
 
@@ -145,13 +146,7 @@ class TCK(TransformerMixin):
                 self.q_params[i]['posterior_probabilities'] = current_posterior
                 self.q_params[i]['gmm_model'] = trained_gmm_model
 
-                # args = i, current_posterior, current_posterior, self.similarity_function
-                # # single_similarity_calculation_results.append(pool.apply_async(TCK.calculate_similarity, args))
-                # single_similarity_calculation_results.append(partial(TCK.calculate_similarity, *args))
-
             self.K = self.transform(X, R, use_n_jobs=False)
-            # res = pool.imap(partial.__call__, single_similarity_calculation_results)
-            # self.K = reduce(np.add, res)[1]
 
         return self
 
@@ -164,24 +159,27 @@ class TCK(TransformerMixin):
         if 'n_jobs' in kwargs.keys():
             self.n_jobs = kwargs['n_jobs']
 
-
     @staticmethod
     # TODO: add similarity_function params
     def calculate_similarity(i: int,
                              p: Union[np.ndarray, Callable],
                              q: Union[np.ndarray, Callable],
-                             similarity_function: str):
-        K = None
-
+                             similarity_functions: Set[str]):
+        # First init arguments of the distributions
         if callable(p):
             p = p()
         if callable(q):
             q = q()
 
-        if similarity_function == 'jensenshannon':
-            K = np.exp(-0.1 * (pairwise_distances(p, q, metric=jensenshannon, base=2)) ** 2)
-        else:
-            K = pairwise_kernels(p, q, metric=similarity_function)
+        # Second init matrix
+        K = np.zeros((p.shape[0], q.shape[0]))
+
+        # Calculate kernel with many methods or one
+        for similarity_function in similarity_functions:
+            if similarity_function == 'jensenshannon':
+                K += np.exp(-0.1 * (pairwise_distances(p, q, metric=jensenshannon, base=2)))
+            else:
+                K += pairwise_kernels(p, q, metric=similarity_function)
 
         # TODO: check that K is a kernel.
 
@@ -203,9 +201,14 @@ class TCK(TransformerMixin):
 
         self.max_features = max_features
 
-    def set_similarity_function(self, similarity_function):
-        if similarity_function not in TCK.VALID_SIMILARITY_FUNCTION_VALS:
-            raise Exception(f"'{similarity_function}' is not valid for max_features "
+    def set_similarity_function(self, similarity_function: Union[str, Iterable[str]]):
+        if type(similarity_function) is str:
+            similarity_function = {similarity_function}
+        elif isinstance(similarity_function, Iterable):
+            similarity_function = set(similarity_function)
+
+        if not similarity_function.issubset(TCK.VALID_SIMILARITY_FUNCTION_VALS):
+            raise Exception(f"'{similarity_function}' is not valid for similarity_function "
                             f"please use {TCK.VALID_SIMILARITY_FUNCTION_VALS}")
 
         self.similarity_function = similarity_function
