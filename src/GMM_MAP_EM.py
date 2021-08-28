@@ -7,6 +7,7 @@ from numpy import inf
 from scipy import linalg
 import sys
 from utils import LinearAlgebraUtils
+from utils import DataUtils
 
 
 class GMM_MAP_EM(TransformerMixin):
@@ -50,6 +51,7 @@ class GMM_MAP_EM(TransformerMixin):
         :param X: a 3d matrix represent MTS (NxTxV)
         :param R: a 3d matrix represent the missing values of the MTS
     """
+
     def fit(self, X: np.ndarray,
             R: np.ndarray = None):
         self.N = X.shape[0]
@@ -104,9 +106,9 @@ class GMM_MAP_EM(TransformerMixin):
 
     def init_cluster_posteriors(self) -> np.ndarray:
         raw = np.random.rand(self.C, self.N)
-        sums = raw.sum(axis=0)   # sum for each MTS
+        sums = raw.sum(axis=0)  # sum for each MTS
         posteriors = raw / sums[np.newaxis, :]  # each MTS total probability is 1
-        
+
         return posteriors
 
     def init_cluster_theta(self) -> np.ndarray:
@@ -122,7 +124,7 @@ class GMM_MAP_EM(TransformerMixin):
         self.posteriors = self.evaluate_posterior(X, R)
 
     def evaluate_posterior(self, X: np.ndarray, R: np.ndarray) -> np.ndarray:
-        N, T, V = X.shape[0], X.shape[1], X.shape[2]
+        N, T, V = X.shape
         posterior = np.zeros((self.C, N))
 
         for c in range(self.C):
@@ -131,7 +133,7 @@ class GMM_MAP_EM(TransformerMixin):
             prob = norm.pdf(X, loc=mean, scale=cov) ** R
 
             prob[(prob < self.EPSILON)] = self.EPSILON
-            prob = np.reshape(prob, (N, V*T))
+            prob = np.reshape(prob, (N, V * T))
 
             posterior[c] = self.theta[c] * prob.prod(axis=1)
 

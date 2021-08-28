@@ -1,5 +1,5 @@
 import multiprocessing
-from typing import Union, Callable, List, Iterable, Set
+from typing import Union, Callable, List, Iterable, Set, Dict
 from collections.abc import Iterable as Iter
 
 import numpy as np
@@ -14,7 +14,7 @@ from utils import DataUtils, TCKUtils
 import multiprocessing as mp
 from itertools import product
 from functools import reduce, partial
-from scipy.spatial.distance import jensenshannon
+from scipy.spatial.distance import jensenshannon, cdist
 
 
 class TCK(TransformerMixin):
@@ -28,12 +28,13 @@ class TCK(TransformerMixin):
     logger = TCKUtils.set_logger("TCK", logging.INFO)
     VALID_MAX_FEATURE_VALS = {'all', 'sqrt', 'log2'}
     VALID_SIMILARITY_FUNCTION_VALS = {'jensenshannon',
-                                      'additive_chi2', 'chi2', 'linear', 'poly', 'polynomial', 'rbf', 'laplacian', 'sigmoid', 'cosine'}
+                                      'additive_chi2', 'chi2', 'linear', 'poly', 'polynomial', 'rbf', 'laplacian',
+                                      'sigmoid', 'cosine'}
 
     def __init__(self, Q: int, C: int,
                  max_features: str = 'all',
                  similarity_function: Union[str, Iterable[str]] = 'linear',
-                 verbose=1, n_jobs=1):
+                 verbose=1, n_jobs=1, single_gmm_num_iter: int = 20):
         # Model parameters
 
         if verbose == 1:
@@ -74,11 +75,16 @@ class TCK(TransformerMixin):
 
         # endregion randomization params
 
+        # region gmm params
+        self.single_gmm_num_iter = single_gmm_num_iter
+        # endregion gmm params
+
     """
         Algorithm 2 from the article
         :param X: a 3d matrix represent MTS (num_of_mts, max_time_window, attributes)
         :param R: a 3d matrix represent the missing values of the MTS
     """
+
     def fit(self, X: np.ndarray,
             R: np.ndarray = None,
             warm_start: bool = False):
@@ -138,7 +144,6 @@ class TCK(TransformerMixin):
                     f" N0={hyperparameters['N0']:.3f},"
                     f" X.shape={mts_indices.shape[0], time_segments_indices.shape[0], attributes_indices.shape[0]}")
 
-            single_similarity_calculation_results = []
             for r in single_gmm_fit_results:
                 i, trained_gmm_model = r.get()
                 TCK.logger.info(f"fiinished training GMM number ({i}/{self.total_iters})")
@@ -164,7 +169,8 @@ class TCK(TransformerMixin):
     def calculate_similarity(i: int,
                              p: Union[np.ndarray, Callable],
                              q: Union[np.ndarray, Callable],
-                             similarity_functions: Set[str]):
+                             similarity_functions: Set[str],
+                             gamma: float = None):
         # First init arguments of the distributions
         if callable(p):
             p = p()
@@ -174,10 +180,15 @@ class TCK(TransformerMixin):
         # Second init matrix
         K = np.zeros((p.shape[0], q.shape[0]))
 
-        # Calculate kernel with many methods or one
+        if gamma is None:
+            gamma = 1 / p.shape[1]
+
+        # Calculate kernel with many methods(ensemble of kernels) or one
         for similarity_function in similarity_functions:
             if similarity_function == 'jensenshannon':
-                K += np.exp(-0.1 * (pairwise_distances(p, q, metric=jensenshannon, base=2)))
+                #  distance measure to kernel -> exp(-D * gamma)
+                K += np.exp(-gamma * (cdist(p, q, 'jensenshannon')))
+                # TODO: can cause nan values, handle this!
             else:
                 K += pairwise_kernels(p, q, metric=similarity_function)
 
@@ -294,7 +305,7 @@ class TCK(TransformerMixin):
 
     def transform(self, X: np.ndarray,
                   R: np.ndarray = None,
-                  use_n_jobs: bool = False) -> (np.ndarray, np.ndarray):
+                  use_n_jobs: bool = False) -> np.ndarray:
         if R is None:
             R = np.ones_like(X)
 
