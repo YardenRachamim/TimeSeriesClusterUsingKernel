@@ -115,16 +115,26 @@ class TCKUtils:
 
         # restore original lengths
         if not restore:
-            for n in range(N):
+             for n in range(N):
                 t = np.linspace(start=0, stop=X_len[n], num=T)
                 t_new = np.linspace(start=0, stop=X_len[n], num=X_len[n])
+                
+                # this is a shortcut, take argmax by first attribute only
+                if disregard_zeros_on_right:
+                  argmax_non0=np.max(np.nonzero(X[n,:,0]))
+                  t=np.linspace(start=0, stop=X_len[n], num=argmax_non0 )  
                 for v in range(V):
-                    x_n_v = X[n, :, v]
+                    if disregard_zeros_on_right:
+                      x_n_v =X[n,0:argmax_non0,v]
+                      
+                    else:
+                      x_n_v = X[n, :, v]
                     f = interpolate.interp1d(t, x_n_v, kind=interp_kind)
                     X_new[n, :X_len[n], v] = f(t_new)
 
+
         # interpolate all data to length T
-        else:
+        else: # comments above are incorrect 
             for n in range(N):
                 t = np.linspace(start=0, stop=X_len[n], num=X_len[n])
                 t_new = np.linspace(start=0, stop=X_len[n], num=T)
