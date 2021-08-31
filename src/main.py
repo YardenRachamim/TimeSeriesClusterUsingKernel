@@ -169,8 +169,10 @@ if __name__ == '__main__':
     # y_train = y_train[: train_instance_num].astype(int)
 
     # # Arabic digits
-    # X_train, X_test, y_train, y_test = load_ucr_dataset('SpokenArabicDigits')
-
+    
+    #X_train,Y_train=LoadArabic('ArabicDigits_TRAIN')
+    #X_test,Y_test=LoadArabic('ArabicDigits_Test')
+    
     # # Preprocess
     # scaler = TimeSeriesScalerMeanVariance()
     # X_train = scaler.fit_transform(X_train)
@@ -180,6 +182,16 @@ if __name__ == '__main__':
     # X_train = TCKUtils.interp_data(X_train, X_train_len)
 
     # Training the model
+        
+    # folloing TCK invocation is for Arabic
+    #X_interpolated=TCKUtils.interp_data(X_train,[24]*len(X_train))
+    #X_test_interpolated=TCKUtils.interp_data(X_test,[24]*len(X_test))
+    #tck_model = TCK(Q=7, C=11, n_jobs=4,
+    #                max_features='sqrt', # 'all',
+    #                similarity_function=['linear', 'rbf'])
+    #tck_model.fit(X_interpolated)
+    
+    
     R_train = (~(np.isnan(X_train))).astype(int)
     R_test = (~(np.isnan(X_test))).astype(int)
     tck_model = TCK(Q=30, C=40, n_jobs=4,
@@ -206,6 +218,22 @@ if __name__ == '__main__':
     # neigh.fit(tck_model.K, y_train)
 
     # Predict
+    # following block is for Arabic...
+    #R_test=np.zeros_like(X_test_interpolated)
+
+    #R_test[X_test_interpolated !=0]=1  # for brevity, consider 0 as missing (in arabic there are no zeros)
+
+    #_,shape1,shape2=X_interpolated.shape 
+    #_,tstshape1,tstshape2=X_test_interpolated.shape
+    ## bringing test up to size of train (with respect to second and third dims) 
+    #X_test_inter_big=np.zeros((len(X_test_interpolated),shape1,shape2))
+    #R_test_big=np.zeros((len(X_test_interpolated),shape1,shape2))
+    #X_test_inter_big[0:len(X_test_interpolated),0:tstshape1,0:tstshape2]=X_test_interpolated
+    #R_test_big[0:len(X_test_interpolated),0:tstshape1,0:tstshape2]=R_test
+
+    #K_star = tck_model.transform(X_test_inter_big,R_test_big)
+    ## End of Arabic block, remove the line below when running for Arabic
+    
     K_star = tck_model.transform(X_test, R_test)
 
     # y_pred = neigh.predict(K_star.T)
