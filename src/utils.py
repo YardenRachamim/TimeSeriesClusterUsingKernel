@@ -128,9 +128,10 @@ class TCKUtils:
         return logger
 
     @staticmethod
-    def interp_data(X: np.ndarray,
+      def interp_data(X: np.ndarray,
                     X_len: list = None,
                     restore: bool = False,
+                    disregard_zeros_on_right: bool = True,
                     interp_kind: str = 'linear'):
         """
         Interpolate data to match the same maximum length in X_len
@@ -141,20 +142,31 @@ class TCKUtils:
         if X_len is None:
             X_len = [X.shape[1] for _ in range(X.shape[0])]
         [N, T, V] = X.shape
-        X_new = np.zeros((X.shape[0], X_len[0], X.shape[2]))
-
+        
         # restore original lengths
         if not restore:
             for n in range(N):
+                
                 t = np.linspace(start=0, stop=X_len[n], num=T)
                 t_new = np.linspace(start=0, stop=X_len[n], num=X_len[n])
+                
+                # this is a shortcut, take argmax by first attribute only
+                if disregard_zeros_on_right:
+                    n0max=np.max(np.nonzero(X[n,:,0]))
+                    #if n% 1000==0 : print  ('n0max',n0max )
+                
+                    t=np.linspace(start=0, stop=X_len[n], num=n0max  )  
                 for v in range(V):
-                    x_n_v = X[n, :, v]
+                    if disregard_zeros_on_right:
+                        x_n_v =X[n,0:n0max ,v]
+                      
+                    else:
+                        x_n_v = X[n, :, v]
                     f = interpolate.interp1d(t, x_n_v, kind=interp_kind)
                     X_new[n, :X_len[n], v] = f(t_new)
 
         # interpolate all data to length T
-        else:
+        else: # i didn't touch this restore code below - comment above is incorrect
             for n in range(N):
                 t = np.linspace(start=0, stop=X_len[n], num=X_len[n])
                 t_new = np.linspace(start=0, stop=X_len[n], num=T)
@@ -164,6 +176,7 @@ class TCKUtils:
                     X_new[n, :, v] = f(t_new)
 
         return X_new
+ 
 
 
 class LinearAlgebraUtils:
