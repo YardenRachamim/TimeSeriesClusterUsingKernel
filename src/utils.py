@@ -10,6 +10,7 @@ from sklearn.model_selection import StratifiedShuffleSplit
 from scipy import io
 from scipy.spatial.distance import jensenshannon
 from itertools import product
+import pandas as pd
 
 import torch
 from typing import Dict
@@ -106,6 +107,47 @@ class DataUtils:
 
         return data
 
+    @staticmethod
+    def LoadArabic(filename):
+        file = pd.read_csv(filename, header=None, sep=" ")
+        current_mts = []
+        data_size = 0
+        max_len = 0
+        num_of_attr = 13
+        data = []
+        labels = []
+        last_mts_id = file.iloc[0, 0]
+
+        for i in range(len(file)):
+            mts_id = file.iloc[i, 0]
+            mts_num = file.iloc[i, 1]
+            max_len = max(mts_num, max_len)
+            mts_nums = file.iloc[i, 3:3 + num_of_attr].values
+
+            if len(mts_nums) < num_of_attr:
+                print('less attributes...i', i)
+
+            if mts_id != last_mts_id:
+                if current_mts:
+                    data.append(current_mts)
+                    labels.append(mts_label)
+                    current_mts = []
+                    data_size += 1
+                    last_mts_id = mts_id
+
+            mts_label = file.iloc[i, 2]
+
+            current_mts.append(mts_nums)
+
+        X = np.zeros((data_size, max_len, num_of_attr))
+        Y = np.zeros((data_size, 1))
+
+        for i in range(len(data)):
+            X[i, 0:len(data[i]), :] = data[i]
+            Y[i] = labels[i]
+
+        return X, Y
+
 
 class TCKUtils:
     lock = threading.Lock()
@@ -128,7 +170,7 @@ class TCKUtils:
         return logger
 
     @staticmethod
-      def interp_data(X: np.ndarray,
+    def interp_data(X: np.ndarray,
                     X_len: list = None,
                     restore: bool = False,
                     disregard_zeros_on_right: bool = True,
@@ -142,41 +184,41 @@ class TCKUtils:
         if X_len is None:
             X_len = [X.shape[1] for _ in range(X.shape[0])]
         [N, T, V] = X.shape
-        
+        n0max = None
+        X_new = np.zeros((X.shape[0], X_len[0], X.shape[2]))
+
         # restore original lengths
         if not restore:
             for n in range(N):
-                
                 t = np.linspace(start=0, stop=X_len[n], num=T)
                 t_new = np.linspace(start=0, stop=X_len[n], num=X_len[n])
-                
+
                 # this is a shortcut, take argmax by first attribute only
                 if disregard_zeros_on_right:
-                    n0max=np.max(np.nonzero(X[n,:,0]))
-                    #if n% 1000==0 : print  ('n0max',n0max )
-                
-                    t=np.linspace(start=0, stop=X_len[n], num=n0max  )  
+                    n0max = np.max(np.nonzero(X[n, :, 0]))
+                    t = np.linspace(start=0, stop=X_len[n], num=n0max)
+
                 for v in range(V):
                     if disregard_zeros_on_right:
-                        x_n_v =X[n,0:n0max ,v]
-                      
+                        x_n_v = X[n, 0:n0max, v]
+
                     else:
                         x_n_v = X[n, :, v]
+
                     f = interpolate.interp1d(t, x_n_v, kind=interp_kind)
                     X_new[n, :X_len[n], v] = f(t_new)
 
-        # interpolate all data to length T
-        else: # i didn't touch this restore code below - comment above is incorrect
-            for n in range(N):
-                t = np.linspace(start=0, stop=X_len[n], num=X_len[n])
-                t_new = np.linspace(start=0, stop=X_len[n], num=T)
-                for v in range(V):
-                    x_n_v = X[n, :X_len[n], v]
-                    f = interpolate.interp1d(t, x_n_v, kind=interp_kind)
-                    X_new[n, :, v] = f(t_new)
+        # # interpolate all data to length T
+        # else:  # i didn't touch this restore code below - comment above is incorrect
+        #     for n in range(N):
+        #         t = np.linspace(start=0, stop=X_len[n], num=X_len[n])
+        #         t_new = np.linspace(start=0, stop=X_len[n], num=T)
+        #         for v in range(V):
+        #             x_n_v = X[n, :X_len[n], v]
+        #             f = interpolate.interp1d(t, x_n_v, kind=interp_kind)
+        #             X_new[n, :, v] = f(t_new)
 
         return X_new
- 
 
 
 class LinearAlgebraUtils:
