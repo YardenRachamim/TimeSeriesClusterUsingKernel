@@ -11,6 +11,9 @@ from scipy import io
 from scipy.spatial.distance import jensenshannon
 from itertools import product
 
+import torch
+from typing import Dict
+
 
 class DataUtils:
     @staticmethod
@@ -75,6 +78,33 @@ class DataUtils:
                np.transpose(test_x, (0, 2, 1)), \
                train_y, \
                test_y
+
+    @staticmethod
+    def get_article_data_set_for_dmm() -> Dict[str, torch.Tensor]:
+        data = {
+            "train": {'sequence_lengths': None, 'sequences': None},
+            "test": {'sequence_lengths': None, 'sequences': None},
+            "valid": {'sequence_lengths': None, 'sequences': None}
+        }
+
+        X_train, X_test, _, _ = DataUtils.get_article_data_set()
+
+        X_train[np.isnan(X_train)] = 0
+        X_train[np.isnan(X_test)] = 0
+
+        N_train, T_train, V_train = X_train.shape
+        N_test, T_test, V_test = X_test.shape
+
+        data["train"]["sequence_lengths"] = torch.tensor([T_train] * N_train).int()
+        data["train"]["sequences"] = torch.from_numpy(X_train).float()
+
+        data["test"]["sequence_lengths"] = torch.tensor([T_test] * N_test).int()
+        data["test"]["sequences"] = torch.from_numpy(X_test).float()
+
+        data["valid"]["sequence_lengths"] = torch.tensor([T_test] * N_test).int()
+        data["valid"]["sequences"] = torch.from_numpy(X_test).float()
+
+        return data
 
 
 class TCKUtils:
