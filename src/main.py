@@ -182,9 +182,9 @@ if __name__ == '__main__':
     # Training the model
     R_train = (~(np.isnan(X_train))).astype(int)
     R_test = (~(np.isnan(X_test))).astype(int)
-    tck_model = TCK(Q=30, C=40, n_jobs=4,
+    tck_model = TCK(Q=5, C=5, n_jobs=4,
                     max_features='all',
-                    similarity_function=['linear', 'rbf'])
+                    similarity_function=['linear', 'rbf'], single_gmm_num_iter=100)
     tck_model.fit(X_train, R_train)
     # tck_model.set_params(Q=10, C=10)
     # tck_model.fit(X_train, R_train, warm_start=True)
