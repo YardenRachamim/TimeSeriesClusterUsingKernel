@@ -11,9 +11,10 @@ from scipy import io
 from scipy.spatial.distance import jensenshannon
 from itertools import product
 import pandas as pd
+from pathlib import Path
 
 import torch
-from typing import Dict
+from typing import Dict, List, Union
 
 
 class DataUtils:
@@ -108,45 +109,96 @@ class DataUtils:
         return data
 
     @staticmethod
-    def LoadArabic(filename):
-        file = pd.read_csv(filename, header=None, sep=" ")
-        current_mts = []
-        data_size = 0
-        max_len = 0
-        num_of_attr = 13
-        data = []
-        labels = []
-        last_mts_id = file.iloc[0, 0]
+    def LoadArabic(filename: Union[List, str], from_pickle=True):
+        if from_pickle:
+            X_interpolated = np.load(filename[0])
+            y = np.load(filename[1])
+        else:
+            file = pd.read_csv(filename, header=None, sep=" ")
+            current_mts = []
+            data_size = 0
+            max_len = 0
+            num_of_attr = 13
+            data = []
+            labels = []
+            last_mts_id = file.iloc[0, 0]
 
-        for i in range(len(file)):
-            mts_id = file.iloc[i, 0]
-            mts_num = file.iloc[i, 1]
-            max_len = max(mts_num, max_len)
-            mts_nums = file.iloc[i, 3:3 + num_of_attr].values
+            for i in range(len(file)):
+                mts_id = file.iloc[i, 0]
+                mts_num = file.iloc[i, 1]
+                max_len = max(mts_num, max_len)
+                mts_nums = file.iloc[i, 3:3 + num_of_attr].values
 
-            if len(mts_nums) < num_of_attr:
-                print('less attributes...i', i)
+                if len(mts_nums) < num_of_attr:
+                    print('less attributes...i', i)
 
-            if mts_id != last_mts_id:
-                if current_mts:
-                    data.append(current_mts)
-                    labels.append(mts_label)
-                    current_mts = []
-                    data_size += 1
-                    last_mts_id = mts_id
+                if mts_id != last_mts_id:
+                    if current_mts:
+                        data.append(current_mts)
+                        labels.append(mts_label)
+                        current_mts = []
+                        data_size += 1
+                        last_mts_id = mts_id
 
-            mts_label = file.iloc[i, 2]
+                mts_label = file.iloc[i, 2]
 
-            current_mts.append(mts_nums)
+                current_mts.append(mts_nums)
 
-        X = np.zeros((data_size, max_len, num_of_attr))
-        Y = np.zeros((data_size, 1))
+            X = np.zeros((data_size, max_len, num_of_attr))
+            y = np.zeros((data_size, 1))
 
-        for i in range(len(data)):
-            X[i, 0:len(data[i]), :] = data[i]
-            Y[i] = labels[i]
+            for i in range(len(data)):
+                X[i, 0:len(data[i]), :] = data[i]
+                y[i] = labels[i]
 
-        return X, Y
+            # following TCK invocation is for Arabic
+            X_interpolated = TCKUtils.interp_data(X, [24] * len(X))
+
+        return X_interpolated, y
+
+    @staticmethod
+    def get_pen_digits_data():
+        train = pd.read_csv(
+            r"C:\Users\Yarden\Computer Science\Masters\1\Advance Machine Learning\final project\mts_dataset\PenDigits\PenDigits_TRAIN",
+            header=None, sep='\t')
+        test = pd.read_csv(
+            r"C:\Users\Yarden\Computer Science\Masters\1\Advance Machine Learning\final "
+            r"project\mts_dataset\PenDigits\PenDigits_TEST",
+            header=None, sep='\t')
+
+        train_labels = train[[0, 2]]
+        test_labels = test[[0, 2]]
+        train_features = train.loc[:, [3, 4]]
+        test_features = test.loc[:, [3, 4]]
+
+        X_train = train_features.values.reshape(train[0].nunique(), -1, 2)
+        X_test = test_features.values.reshape(test[0].nunique(), -1, 2)
+
+        y_train = train_labels.groupby(0).first().values.reshape(train[0].nunique(), )
+        y_test = test_labels.groupby(0).first().values.reshape(test[0].nunique(), )
+
+        return X_train, X_test, y_train, y_test
+
+    @staticmethod
+    def save_numpy_array(path: Union[str, Path],
+                         X_train: np.ndarray,
+                         X_test: np.ndarray,
+                         y_train: np.ndarray,
+                         y_test: np.ndarray):
+        np.save(path / "X_train.npy", X_train)
+        np.save(path / "X_test.npy", X_test)
+        np.save(path / "y_train.npy", y_train)
+        np.save(path / "y_test.npy", y_test)
+
+    @staticmethod
+    def load_numpy_array(path: Union[str, Path]):
+        X_train = np.load(path / "X_train.npy")
+        X_test = np.load(path / "X_test.npy")
+        y_train = np.load(path / "y_train.npy")
+        y_test = np.load(path / "y_test.npy")
+
+        return X_train, X_test, y_train, y_test
+
 
 
 class TCKUtils:
