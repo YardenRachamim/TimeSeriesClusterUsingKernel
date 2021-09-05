@@ -4,3 +4,6 @@
 /Uwave_data/
 /UWaveGestureLibrary/
 /src/vae_missing_data-master/
+/src/notebooks/experiments/.ipynb_checkpoints/
+/src/notebooks/experiments/*_checkpoints.ipynb/
+
