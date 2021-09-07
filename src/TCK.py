@@ -189,6 +189,7 @@ class TCK(TransformerMixin):
                 #  distance measure to kernel -> exp(-D * gamma)
                 K += np.exp(-gamma * (cdist(p, q, 'jensenshannon')))
                 # TODO: can cause nan values, handle this!
+                K[np.isnan(K)] = 0
             else:
                 K += pairwise_kernels(p, q, metric=similarity_function)
 
