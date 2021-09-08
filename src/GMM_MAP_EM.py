@@ -18,7 +18,6 @@ class GMM_MAP_EM(TransformerMixin):
     :param C: Number of gaussians
     :param num_iter: number of maximum iteration (default: 20)
     """
-
     def __init__(self, a0: float,
                  b0: float,
                  N0: float,

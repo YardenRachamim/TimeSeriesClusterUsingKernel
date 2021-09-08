@@ -19,59 +19,61 @@ from tslearn.metrics import cdist_ctw
 from tslearn.utils import to_time_series_dataset
 from sklearn.neighbors import KNeighborsClassifier
 
-
-def get_train_test_indices(data_array, labels_array):
-    sss = StratifiedShuffleSplit(n_splits=1, test_size=0.25)
-    return next(sss.split(data_array, labels_array))
+from utils import DataUtils, TCKUtils
 
 
-def get_wisdom_data():
-    data_array = joblib.load(
-        r"C:\Users\Yarden\Computer Science\Masters\Research\WISDOM-20210725T165727Z-001\WISDOM\raw"
-        r"\data_10sec_20Hz_compress_3.gz")
-    labels_array = joblib.load(
-        r"C:\Users\Yarden\Computer Science\Masters\Research\WISDOM-20210725T165727Z-001\WISDOM\raw\label_10sec_20Hz")
-    scaler = MinMaxScaler()
-    train_indices, test_indices = get_train_test_indices(data_array, labels_array)
-    train_x, test_x = data_array[train_indices], data_array[test_indices]
-    train_y, test_y = labels_array[train_indices].reshape(-1), labels_array[test_indices].reshape(-1)
-
-    temp_train_x = scaler.fit_transform(train_x.reshape(train_x.shape[1], -1).T)
-    train_x = temp_train_x.T.reshape(train_x.shape[0], train_x.shape[1], train_x.shape[2])
-    temp_test_x = scaler.transform(test_x.reshape(test_x.shape[1], -1).T)
-    test_x = temp_test_x.T.reshape(test_x.shape[0], test_x.shape[1], test_x.shape[2])
-
-    return np.transpose(train_x, (0, 2, 1)), \
-           np.transpose(test_x, (0, 2, 1)), \
-           train_y, \
-           test_y
-
-
-def get_article_data_set():
-    # This is the example run of the MATLAB code
-    X = io \
-        .loadmat(r"C:\Users\Yarden\Computer Science\Masters\1\Advance Machine Learning\final "
-                 r"project\Time-series-cluster-kernel-TCK--master\x_VAR.mat") \
-        ['x'].reshape((200, 50, 2))
-    Z = np.ones_like(X)
-    R = np.random.random(X.shape)
-    Z[R > 0.5] = 0
-    X[Z == 0] = np.nan
-
-    X_test = io \
-        .loadmat(r"C:\Users\Yarden\Computer Science\Masters\1\Advance Machine Learning\final "
-                 r"project\Time-series-cluster-kernel-TCK--master\xte_VAR.mat") \
-        ['xte'].reshape((200, 50, 2))
-    Z_test = np.ones_like(X_test)
-    R_Test = np.random.random(X_test.shape)
-    Z_test[R_Test > 0.5] = 0
-    X_test[Z_test == 0] = np.nan
-
-    y_test = np.zeros(X_test.shape[0], dtype=int)
-    y_test[0:y_test.shape[0] // 2] = 1
-    y_test[y_test.shape[0] // 2:] = 2
-
-    return X, X_test, y_test, y_test
+# def get_train_test_indices(data_array, labels_array):
+#     sss = StratifiedShuffleSplit(n_splits=1, test_size=0.25)
+#     return next(sss.split(data_array, labels_array))
+#
+#
+# def get_wisdom_data():
+#     data_array = joblib.load(
+#         r"C:\Users\Yarden\Computer Science\Masters\Research\WISDOM-20210725T165727Z-001\WISDOM\raw"
+#         r"\data_10sec_20Hz_compress_3.gz")
+#     labels_array = joblib.load(
+#         r"C:\Users\Yarden\Computer Science\Masters\Research\WISDOM-20210725T165727Z-001\WISDOM\raw\label_10sec_20Hz")
+#     scaler = MinMaxScaler()
+#     train_indices, test_indices = get_train_test_indices(data_array, labels_array)
+#     train_x, test_x = data_array[train_indices], data_array[test_indices]
+#     train_y, test_y = labels_array[train_indices].reshape(-1), labels_array[test_indices].reshape(-1)
+#
+#     temp_train_x = scaler.fit_transform(train_x.reshape(train_x.shape[1], -1).T)
+#     train_x = temp_train_x.T.reshape(train_x.shape[0], train_x.shape[1], train_x.shape[2])
+#     temp_test_x = scaler.transform(test_x.reshape(test_x.shape[1], -1).T)
+#     test_x = temp_test_x.T.reshape(test_x.shape[0], test_x.shape[1], test_x.shape[2])
+#
+#     return np.transpose(train_x, (0, 2, 1)), \
+#            np.transpose(test_x, (0, 2, 1)), \
+#            train_y, \
+#            test_y
+#
+#
+# def get_article_data_set():
+#     # This is the example run of the MATLAB code
+#     X = io \
+#         .loadmat(r"C:\Users\Yarden\Computer Science\Masters\1\Advance Machine Learning\final "
+#                  r"project\Time-series-cluster-kernel-TCK--master\x_VAR.mat") \
+#         ['x'].reshape((200, 50, 2))
+#     Z = np.ones_like(X)
+#     R = np.random.random(X.shape)
+#     Z[R > 0.5] = 0
+#     X[Z == 0] = np.nan
+#
+#     X_test = io \
+#         .loadmat(r"C:\Users\Yarden\Computer Science\Masters\1\Advance Machine Learning\final "
+#                  r"project\Time-series-cluster-kernel-TCK--master\xte_VAR.mat") \
+#         ['xte'].reshape((200, 50, 2))
+#     Z_test = np.ones_like(X_test)
+#     R_Test = np.random.random(X_test.shape)
+#     Z_test[R_Test > 0.5] = 0
+#     X_test[Z_test == 0] = np.nan
+#
+#     y_test = np.zeros(X_test.shape[0], dtype=int)
+#     y_test[0:y_test.shape[0] // 2] = 1
+#     y_test[y_test.shape[0] // 2:] = 2
+#
+#     return X, X_test, y_test, y_test
 
 
 def pickle_tck_model(tck_model: TCK,
@@ -79,7 +81,8 @@ def pickle_tck_model(tck_model: TCK,
                      y_train: np.ndarray, y_test: np.ndarray,
                      R_train: np.ndarray = None, R_test: np.ndarray = None
                      ):
-    with open(r"C:\Users\Yarden\Computer Science\Masters\1\Advance Machine Learning\final project\models\wisdom", 'wb') as fos:
+    with open(r"C:\Users\Yarden\Computer Science\Masters\1\Advance Machine Learning\final project\models\arabic",
+              'wb') as fos:
         pickle.dump(
             (tck_model, X_train, X_test, y_train, y_test, R_train, R_test), fos
         )
@@ -146,7 +149,7 @@ if __name__ == '__main__':
     # gmm_model.fit(X, R)
 
     # Syntetic data
-    X_train, X_test, y_train, y_test = get_article_data_set()
+    X_train, X_test, y_train, y_test = DataUtils.get_article_data_set()
     # X_train = to_time_series_dataset(X_train)
 
     # # Blood test
@@ -169,10 +172,13 @@ if __name__ == '__main__':
     # y_train = y_train[: train_instance_num].astype(int)
 
     # # Arabic digits
-    
-    #X_train,Y_train=LoadArabic('ArabicDigits_TRAIN')
-    #X_test,Y_test=LoadArabic('ArabicDigits_Test')
-    
+    # from pathlib import Path
+    #
+    # arabic_data_root = Path(r"C:\Users\Yarden\Computer Science\Masters\1\Advance Machine Learning\final "
+    #                         r"project\mts_dataset\ArabicDigits")
+    # X_train, y_train = DataUtils.LoadArabic([arabic_data_root / 'X_train.npy', arabic_data_root / 'y_train.npy'])
+    # X_test, y_test = DataUtils.LoadArabic([arabic_data_root / 'X_test.npy', arabic_data_root / 'y_test.npy'])
+
     # # Preprocess
     # scaler = TimeSeriesScalerMeanVariance()
     # X_train = scaler.fit_transform(X_train)
@@ -182,21 +188,20 @@ if __name__ == '__main__':
     # X_train = TCKUtils.interp_data(X_train, X_train_len)
 
     # Training the model
-        
-    # folloing TCK invocation is for Arabic
-    #X_interpolated=TCKUtils.interp_data(X_train,[24]*len(X_train))
-    #X_test_interpolated=TCKUtils.interp_data(X_test,[24]*len(X_test))
-    #tck_model = TCK(Q=7, C=11, n_jobs=4,
-    #                max_features='sqrt', # 'all',
+
+    # # following TCK invocation is for Arabic
+    # X_interpolated = TCKUtils.interp_data(X_train,[24]*len(X_train))
+    # X_test_interpolated = TCKUtils.interp_data(X_test,[24]*len(X_test))
+    # tck_model = TCK(Q=7, C=11, n_jobs=4,
+    #                max_features='sqrt',
     #                similarity_function=['linear', 'rbf'])
-    #tck_model.fit(X_interpolated)
-    
-    
+    # tck_model.fit(X_interpolated)
+
     R_train = (~(np.isnan(X_train))).astype(int)
     R_test = (~(np.isnan(X_test))).astype(int)
-    tck_model = TCK(Q=5, C=5, n_jobs=4,
+    tck_model = TCK(Q=1, C=2, n_jobs=1,
                     max_features='all',
-                    similarity_function=['linear', 'rbf'], single_gmm_num_iter=100)
+                    similarity_function='rbf', single_gmm_num_iter=20)
     tck_model.fit(X_train, R_train)
     # tck_model.set_params(Q=10, C=10)
     # tck_model.fit(X_train, R_train, warm_start=True)
@@ -219,21 +224,21 @@ if __name__ == '__main__':
 
     # Predict
     # following block is for Arabic...
-    #R_test=np.zeros_like(X_test_interpolated)
+    # R_test=np.zeros_like(X_test_interpolated)
 
-    #R_test[X_test_interpolated !=0]=1  # for brevity, consider 0 as missing (in arabic there are no zeros)
+    # R_test[X_test_interpolated !=0]=1  # for brevity, consider 0 as missing (in arabic there are no zeros)
 
-    #_,shape1,shape2=X_interpolated.shape 
-    #_,tstshape1,tstshape2=X_test_interpolated.shape
+    # _,shape1,shape2=X_interpolated.shape
+    # _,tstshape1,tstshape2=X_test_interpolated.shape
     ## bringing test up to size of train (with respect to second and third dims) 
-    #X_test_inter_big=np.zeros((len(X_test_interpolated),shape1,shape2))
-    #R_test_big=np.zeros((len(X_test_interpolated),shape1,shape2))
-    #X_test_inter_big[0:len(X_test_interpolated),0:tstshape1,0:tstshape2]=X_test_interpolated
-    #R_test_big[0:len(X_test_interpolated),0:tstshape1,0:tstshape2]=R_test
+    # X_test_inter_big=np.zeros((len(X_test_interpolated),shape1,shape2))
+    # R_test_big=np.zeros((len(X_test_interpolated),shape1,shape2))
+    # X_test_inter_big[0:len(X_test_interpolated),0:tstshape1,0:tstshape2]=X_test_interpolated
+    # R_test_big[0:len(X_test_interpolated),0:tstshape1,0:tstshape2]=R_test
 
-    #K_star = tck_model.transform(X_test_inter_big,R_test_big)
+    # K_star = tck_model.transform(X_test_inter_big,R_test_big)
     ## End of Arabic block, remove the line below when running for Arabic
-    
+
     K_star = tck_model.transform(X_test, R_test)
 
     # y_pred = neigh.predict(K_star.T)
@@ -242,7 +247,7 @@ if __name__ == '__main__':
     print(accuracy)
 
     # Visualization
-    print(f"Is K PSD: {np.all(np.linalg.eigvals(tck_model.K) >= 0)}")
+    # print(f"Is K PSD: {np.all(np.linalg.eigvals(tck_model.K) >= 0)}")
     X_pca = KernelPCA(n_components=2, kernel='precomputed').fit_transform(tck_model.K)
     # tck_X_tsne = TSNE(n_components=2,
     #               n_jobs=-1,

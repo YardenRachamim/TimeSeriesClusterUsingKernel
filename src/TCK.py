@@ -188,7 +188,8 @@ class TCK(TransformerMixin):
             if similarity_function == 'jensenshannon':
                 #  distance measure to kernel -> exp(-D * gamma)
                 K += np.exp(-gamma * (cdist(p, q, 'jensenshannon')))
-                # TODO: can cause nan values, handle this!
+
+                # Handle null values using the minimum value of the kernel matrix
                 K[np.isnan(K)] = 0
             else:
                 K += pairwise_kernels(p, q, metric=similarity_function)
