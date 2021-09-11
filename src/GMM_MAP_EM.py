@@ -2,12 +2,17 @@ import numpy as np
 from sklearn.base import TransformerMixin
 from scipy.stats import norm
 from scipy.stats import multivariate_normal
-from typing import Tuple, Callable
+from typing import Tuple, Callable, List
 from numpy import inf
 from scipy import linalg
 import sys
 from utils import LinearAlgebraUtils
 from utils import DataUtils
+
+import pomegranate
+from pomegranate import *
+from tslearn.clustering import TimeSeriesKMeans
+from tslearn.utils import to_time_series_dataset
 
 
 class GMM_MAP_EM(TransformerMixin):
@@ -18,6 +23,7 @@ class GMM_MAP_EM(TransformerMixin):
     :param C: Number of gaussians
     :param num_iter: number of maximum iteration (default: 20)
     """
+
     def __init__(self, a0: float,
                  b0: float,
                  N0: float,
@@ -150,7 +156,6 @@ class GMM_MAP_EM(TransformerMixin):
                 var1 = self.posteriors[c].T @ ((R[:, :, v] * temp).sum(axis=1))
 
                 A = self.invS_0[:, :, v] + np.diag((R[:, :, v].T @ self.posteriors[c]) / self.s2[c, v])
-
                 b = (self.invS_0[:, :, v] @ self.empirical_mean[:, v]) + \
                     (((R[:, :, v] * X[:, :, v]).T @ self.posteriors[c]) / self.s2[c, v])
 
@@ -168,3 +173,120 @@ class GMM_MAP_EM(TransformerMixin):
 
         X[R == 0] = -100000
         return self.evaluate_posterior(X, R).T
+
+
+class HMM_GMM(TransformerMixin):
+    def __init__(self,
+                 C: int,
+                 num_iter: int = 20):
+        self.C = C
+        self.num_iter = num_iter
+        self.hmm_model = None
+        self.states = None
+
+        self.N = None
+        self.T_max = None
+        self.V = None
+
+        self.posterior = None
+
+    def fit(self, X: List[np.ndarray], R: np.ndarray = None):
+        self.N = len(X)
+        self.V = X[0].shape[1]
+        self.hmm_model, self.states = self.get_gully_connected_transition_graph(X=X)
+
+        self.hmm_model.fit(X,
+                           batches_per_epoch=1,
+                           algorithm='baum-welch',
+                           verbose=True,
+                           max_iterations=self.num_iter,
+                           n_jobs=-1,
+                           stop_threshold=1)
+
+        return self
+
+    def get_kmeans_cluster(self, X: List[np.ndarray], n_clusters: int) -> np.ndarray:
+        cluster_model = TimeSeriesKMeans(n_clusters=n_clusters, metric='dtw')
+        X_train = to_time_series_dataset(X)
+        labels = cluster_model.fit_predict(X_train)
+
+        return labels
+
+    def get_gully_connected_transition_graph(self, X: List[np.ndarray]):
+        states = []
+        num_of_states = self.C
+        num_of_attr = self.V
+        init_groups = self.get_kmeans_cluster(X, n_clusters=self.C)
+        for c in range(num_of_states):
+            is_instance_in_group = init_groups == c
+            group = list(np.array(X, dtype='object')[is_instance_in_group])
+            flat_group = [item for sublist in group for item in sublist]
+            dist = MultivariateGaussianDistribution(np.zeros(self.V), np.eye(self.V))
+
+            dist.fit(flat_group)
+            state = State(dist)
+            states.append(state)
+
+        # mus = np.random.rand(num_of_states, num_of_attr)
+        # diagonal_cov = np.random.rand(num_of_states, num_of_attr)
+        #
+        # for i in range(num_of_states):
+        #     mu = mus[i, :]
+        #     cov = np.zeros((num_of_attr, num_of_attr))
+        #
+        #     np.fill_diagonal(cov, diagonal_cov[i, :])
+        #
+        #     state = State(MultivariateGaussianDistribution(mu, cov))
+        #
+        #     states.append(state)
+
+        model = HiddenMarkovModel("HMM TRY")
+
+        model.add_states(states)
+
+        # Set initial transition values
+        p = (1 / num_of_states)
+        p2 = p**2
+
+        for i in range(num_of_states):
+            model.add_transition(model.start, states[i], p)
+            model.add_transition(states[i], model.end, p)
+
+            for j in range(num_of_states):
+                model.add_transition(states[i], states[j], p2)
+
+        model.bake()
+
+        return model, states
+
+    def transform(self, X: List[np.ndarray], R: np.ndarray = None) -> np.ndarray:
+        N = len(X)
+        T_max = max(map(lambda a: a.shape[0], X))
+        V = X[0].shape[1]
+        prob_rectangle = np.zeros((N, self.C))
+
+        from collections import defaultdict
+        time_groups = defaultdict(list)
+        for x in X:
+            time_groups[x.shape[0]].append(x)
+
+        probs = []
+        for seq_length, sequnces in time_groups.items():
+            group_probs = self.hmm_model.predict_proba(sequnces)
+            probs.append(group_probs)
+
+        probs = np.concatenate(probs)
+        expected_probs_shape = (N, self.C)
+        if probs.shape != expected_probs_shape:
+            raise Exception(f"Wrong probs shape = {probs.shape} expected shape {expected_probs_shape}")
+
+        # # TODO: try vectorize this
+        # for i in range(N):
+        #     probs = self.hmm_model.predict_proba(X[i])
+        #     normal_probs = np.sum(probs, axis=0)
+        #     seq_length = X[i].shape[0]
+        #
+        #     normal_probs = normal_probs / seq_length
+        #     prob_rectangle[i, :] = normal_probs
+
+        return probs

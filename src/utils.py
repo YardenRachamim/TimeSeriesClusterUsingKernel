@@ -192,10 +192,10 @@ class DataUtils:
 
     @staticmethod
     def load_numpy_array(path: Union[str, Path]):
-        X_train = np.load(path / "X_train.npy")
-        X_test = np.load(path / "X_test.npy")
-        y_train = np.load(path / "y_train.npy")
-        y_test = np.load(path / "y_test.npy")
+        X_train = np.load(path / "X_train.npy", allow_pickle=True)
+        X_test = np.load(path / "X_test.npy", allow_pickle=True)
+        y_train = np.load(path / "y_train.npy", allow_pickle=True)
+        y_test = np.load(path / "y_test.npy", allow_pickle=True)
 
         return X_train, X_test, y_train, y_test
 

@@ -9,7 +9,7 @@ from sklearn.metrics.pairwise import pairwise_kernels, pairwise_distances
 import logging
 import logging.handlers
 
-from GMM_MAP_EM import GMM_MAP_EM
+from GMM_MAP_EM import GMM_MAP_EM, HMM_GMM
 from utils import DataUtils, TCKUtils
 import multiprocessing as mp
 from itertools import product
@@ -30,11 +30,12 @@ class TCK(TransformerMixin):
     VALID_SIMILARITY_FUNCTION_VALS = {'jensenshannon',
                                       'additive_chi2', 'chi2', 'linear', 'poly', 'polynomial', 'rbf', 'laplacian',
                                       'sigmoid', 'cosine'}
+    VALID_MODELS = {'HMM', 'GMM'}
 
     def __init__(self, Q: int, C: int,
                  max_features: str = 'all',
                  similarity_function: Union[str, Iterable[str]] = 'linear',
-                 verbose=1, n_jobs=1, single_gmm_num_iter: int = 20):
+                 verbose=1, n_jobs=1, single_model_num_iter: int = 20, model='GMM'):
         # Model parameters
 
         if verbose == 1:
@@ -47,8 +48,7 @@ class TCK(TransformerMixin):
         self.C = C
         self.max_features = None
         self.set_max_features(max_features)
-        self.similarity_function = None
-        self.set_similarity_function(similarity_function)
+        self.similarity_function = self.set_similarity_function(similarity_function)
         self.q_params = {}  # Dictionary to track at each iteration q the results
         self.ranges = None
         self.iter_ranges = None
@@ -75,9 +75,11 @@ class TCK(TransformerMixin):
 
         # endregion randomization params
 
-        # region gmm params
-        self.single_gmm_num_iter = single_gmm_num_iter
-        # endregion gmm params
+        # region model params
+        self.single_num_iter = single_model_num_iter
+        # TODO: add validation
+        self.model = model
+        # endregion model params
 
     """
         Algorithm 2 from the article
@@ -85,13 +87,13 @@ class TCK(TransformerMixin):
         :param R: a 3d matrix represent the missing values of the MTS
     """
 
-    def fit(self, X: np.ndarray,
+    def fit(self, X: Union[np.ndarray, List[np.ndarray]],
             R: np.ndarray = None,
             warm_start: bool = False):
         if not warm_start:
-            self.N = X.shape[0]
-            self.T = X.shape[1]
-            self.V = X.shape[2]
+            self.N = len(X)
+            self.T = max([x.shape[0] for x in X])
+            self.V = X[0].shape[1]
             self.K = np.zeros((self.N, self.N))
             self.set_randomization_fields(X)
 
@@ -115,7 +117,9 @@ class TCK(TransformerMixin):
         processes = self.set_processes()
 
         with mp.pool.ThreadPool(processes=processes) as pool:
+            sequence_lengths = [x.shape[0] for x in X]
             single_gmm_fit_results = []
+
             for i, (q, c) in enumerate(self.iter_ranges):
                 self.iter += 1
                 hyperparameters = TCKUtils.get_random_gmm_hyperparameters()
@@ -123,21 +127,30 @@ class TCK(TransformerMixin):
                 attributes_indices = self.get_iter_attributes_indices()
                 mts_indices = self.get_iter_mts_indices()
                 C = c
-                gmm_map_em_model = GMM_MAP_EM(a0=hyperparameters['a0'],
-                                              b0=hyperparameters['b0'],
-                                              N0=hyperparameters['N0'],
-                                              C=C)
-                gmm_model = SubsetGmmMapEm(gmm_map_em_model,
-                                           mts_indices,
-                                           time_segments_indices,
-                                           attributes_indices)
+                if self.model == 'GMM':
+                    base_model = GMM_MAP_EM(a0=hyperparameters['a0'],
+                                            b0=hyperparameters['b0'],
+                                            N0=hyperparameters['N0'],
+                                            C=C)
+
+                elif self.model == 'HMM':
+                    base_model = HMM_GMM(C=C,
+                                         num_iter=self.single_num_iter)
+                    time_segments_indices = np.array(sequence_lengths)
+
+                model = SubsetDataModel(base_model,
+                                        mts_indices,
+                                        time_segments_indices,
+                                        attributes_indices)
 
                 self.update_q_params(self.iter, hyperparameters, time_segments_indices, attributes_indices,
                                      mts_indices, C)
 
-                args = (self.iter, gmm_model, X, R)
+                args = (self.iter, model, X, R)
                 single_gmm_fit_results.append(pool.apply_async(TCK.single_fit, args))
 
+                # TODO: this is a quick and dirty workaround, dont leave it this way!
+                time_segments_indices = np.array([None] * max([x.shape[0] for x in X]))
                 TCK.logger.info(
                     f"({self.iter}/{self.total_iters}): q params are: q={q}, C={C}, a0={hyperparameters['a0']:.3f},"
                     f" b0={hyperparameters['b0']:.3f},"
@@ -215,16 +228,17 @@ class TCK(TransformerMixin):
         self.max_features = max_features
 
     def set_similarity_function(self, similarity_function: Union[str, Iterable[str]]):
+        f = None
         if type(similarity_function) is str:
-            similarity_function = {similarity_function}
+            f = {similarity_function}
         elif isinstance(similarity_function, Iterable):
-            similarity_function = set(similarity_function)
+            f = set(similarity_function)
 
-        if not similarity_function.issubset(TCK.VALID_SIMILARITY_FUNCTION_VALS):
+        if not f.issubset(TCK.VALID_SIMILARITY_FUNCTION_VALS):
             raise Exception(f"'{similarity_function}' is not valid for similarity_function "
                             f"please use {TCK.VALID_SIMILARITY_FUNCTION_VALS}")
 
-        self.similarity_function = similarity_function
+        return f
 
     def set_processes(self):
         if self.n_jobs == -1:
@@ -337,7 +351,86 @@ class TCK(TransformerMixin):
 
         return K_star
 
+    def change_similarity_calculation(self, similarity_function):
+        # TODO: implement
+        pass
 
+
+class SubsetDataModel(TransformerMixin):
+    """
+    helper class for the TCK algorithm to represent GMM_MAP_EMM for subsets of data
+    """
+
+    def __init__(self, base_model: Union[HMM_GMM, GMM_MAP_EM],
+                 mts_indices: np.ndarray,
+                 time_segments_indices: np.ndarray,
+                 attributes_indices: np.ndarray):
+        self.base_model = base_model
+        self.mts_indices = mts_indices
+        self.time_segments_indices = time_segments_indices
+        self.attributes_indices = attributes_indices
+
+        self.X_shape = None
+
+    def fit(self, X, R):
+        self.X_shape = X.shape
+        if X.shape != R.shape and len(X.shape) > 1:
+            error_msg = f"X and R are not of same shape"
+
+            raise Exception(error_msg)
+
+        if isinstance(self.base_model, GMM_MAP_EM):
+            current_subset_data = DataUtils.get_3d_array_subset(X,
+                                                                self.mts_indices,
+                                                                self.time_segments_indices,
+                                                                self.attributes_indices)
+            current_subset_mask = DataUtils.get_3d_array_subset(R,
+                                                                self.mts_indices,
+                                                                self.time_segments_indices,
+                                                                self.attributes_indices)
+        elif isinstance(self.base_model, HMM_GMM):
+            current_X = [X[index] for index in self.mts_indices]
+            current_subset_data = [x[:, self.attributes_indices] for x in current_X]
+
+            current_subset_mask = None
+        else:
+            raise Exception(f"base_model is of type {type(self.base_model)} which is not valid in this context")
+
+        self.base_model.fit(current_subset_data, current_subset_mask)
+
+    def transform(self, X, R) -> np.ndarray:
+        if X.ndim == 2:
+            X = X[None, :, :]
+        if R is None:
+            R = np.ones_like(X)
+        if R.ndim == 2:
+            R = R[None, :, :]
+        is_valid_shape = (X.ndim != 3) or (X.shape[1] == self.X_shape[1]) and (X.shape[2] == self.X_shape[2])
+        if not is_valid_shape:
+            error_msg = "X shape is not valid"
+
+            raise Exception(error_msg)
+
+        if isinstance(self.base_model, GMM_MAP_EM):
+            current_subset_data = DataUtils.get_3d_array_subset(X,
+                                                                np.arange(X.shape[0]),
+                                                                self.time_segments_indices,
+                                                                self.attributes_indices)
+            current_subset_mask = DataUtils.get_3d_array_subset(R,
+                                                                np.arange(R.shape[0]),
+                                                                self.time_segments_indices,
+                                                                self.attributes_indices)
+        elif isinstance(self.base_model, HMM_GMM):
+            current_subset_data = [x[:, self.attributes_indices] for x in X]
+
+            current_subset_mask = None
+        else:
+            raise Exception(f"base_model is of type {type(self.base_model)} which is not valid in this context")
+
+        return self.base_model.transform(current_subset_data, current_subset_mask)
+
+
+# For back compatibility
 class SubsetGmmMapEm(TransformerMixin):
     """
     helper class for the TCK algorithm to represent GMM_MAP_EMM for subsets of data
